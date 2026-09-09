@@ -1,0 +1,215 @@
+@import "tailwindcss";
+@import "@radix-ui/colors/slate-dark.css";
+@import "@radix-ui/colors/blue-dark.css";
+
+@theme {
+  --font-sans: "Noto Sans Thai", "Leelawadee UI", Inter, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+}
+
+:root {
+  color-scheme: dark;
+  --background: #090a0c;
+  --foreground: #f3f6fb;
+  --card: #121417;
+  --muted: #191d22;
+  --muted-foreground: #9ca6b4;
+  --border: #29313d;
+  --primary: #245ca8;
+  --primary-foreground: #ffffff;
+}
+
+* {
+  border-color: var(--border);
+}
+html {
+  background: var(--background);
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  overscroll-behavior-y: none;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+::selection {
+  background: rgb(59 130 246 / 0.32);
+}
+.grid-noise {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-image:
+    radial-gradient(
+      circle at 10% 0%,
+      color-mix(in srgb, var(--blue-8) 7%, transparent),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at 92% 30%,
+      color-mix(in srgb, var(--blue-7) 4%, transparent),
+      transparent 26rem
+    ),
+    linear-gradient(
+      color-mix(in srgb, var(--slate-8) 3.5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--slate-8) 3.5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    auto,
+    auto,
+    32px 32px,
+    32px 32px;
+  background-attachment: fixed;
+}
+
+.grid-noise::before,
+.grid-noise::after {
+  position: fixed;
+  z-index: -1;
+  border-radius: 9999px;
+  content: "";
+  pointer-events: none;
+  filter: blur(84px);
+  will-change: transform;
+}
+
+.grid-noise::before {
+  top: 8%;
+  left: 10%;
+  width: clamp(17rem, 34vw, 38rem);
+  aspect-ratio: 1;
+  background: rgb(37 99 235 / 0.11);
+  animation: ambient-drift-one 18s ease-in-out infinite alternate;
+}
+
+.grid-noise::after {
+  top: 52%;
+  right: 2%;
+  width: clamp(15rem, 28vw, 32rem);
+  aspect-ratio: 1;
+  background: rgb(14 165 233 / 0.07);
+  animation: ambient-drift-two 24s ease-in-out infinite alternate;
+}
+
+.nav-scrim {
+  animation: scrim-in 180ms ease-out both;
+}
+
+.glass-shell {
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  backdrop-filter: blur(22px) saturate(135%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+.glass-panel {
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.055),
+    0 16px 42px rgb(0 0 0 / 0.16);
+}
+
+.glass-card {
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.045),
+    0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+.hero-orb {
+  animation: hero-breathe 8s ease-in-out infinite alternate;
+}
+
+.hero-line {
+  animation: line-glide 5s ease-in-out infinite;
+}
+
+.tool-section {
+  animation: section-in 420ms ease-out both;
+}
+
+.tool-card::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(115deg, transparent 20%, rgb(96 165 250 / 0.07) 48%, transparent 72%);
+  content: "";
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-35%);
+  transition: opacity 280ms ease, transform 520ms ease;
+}
+
+@media (hover: hover) {
+  .tool-card:hover {
+    transform: translateY(-4px);
+  }
+
+  .tool-card:hover::after {
+    opacity: 1;
+    transform: translateX(35%);
+  }
+}
+
+@keyframes ambient-drift-one {
+  to { transform: translate3d(12vw, 9vh, 0) scale(1.08); }
+}
+
+@keyframes ambient-drift-two {
+  to { transform: translate3d(-10vw, -12vh, 0) scale(0.9); }
+}
+
+@keyframes hero-breathe {
+  to { transform: translate3d(-2rem, 1rem, 0) scale(1.08); opacity: 0.78; }
+}
+
+@keyframes line-glide {
+  0%, 100% { transform: translateX(-10%); opacity: 0.45; }
+  50% { transform: translateX(10%); opacity: 1; }
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes section-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation: none !important;
+  }
+}

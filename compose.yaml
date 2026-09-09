@@ -1,0 +1,18 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      API_PORT: 3000
+      ALLOWED_ORIGINS: http://localhost:8080
+    expose:
+      - "3000"
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"

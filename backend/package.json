@@ -1,0 +1,19 @@
+{
+  "name": "@tools-for-dice/backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.1",
+    "elysia": "^1.4.30"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}

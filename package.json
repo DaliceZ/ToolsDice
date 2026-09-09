@@ -1,0 +1,27 @@
+{
+  "name": "tools-for-dice",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "dev:web": "bun --cwd frontend dev",
+    "dev:api": "bun --cwd backend dev",
+    "build": "bun --cwd frontend build && bun --cwd backend build",
+    "lint": "eslint frontend/src backend/src scripts",
+    "typecheck": "bun --cwd frontend typecheck && bun --cwd backend typecheck",
+    "test": "bun --cwd frontend test && bun --cwd backend test",
+    "test:e2e": "bun --cwd frontend test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "typescript-eslint": "^8.46.1"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}
