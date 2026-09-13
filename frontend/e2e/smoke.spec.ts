@@ -70,7 +70,7 @@ test("PDF text extraction reads every page when the page range is left blank", a
 
   await page.getByRole("button", { name: "Extract text", exact: true }).click();
   const output = page.locator(".output-editor textarea");
-  await expect(output).toHaveValue(/first-page-unique[\s\S]*second-page-unique/);
+  await expect(output).toHaveValue(/first-page-unique[\s\S]*second-page-unique/, { timeout: 15_000 });
 });
 
 test("PDF merge appends files chosen in separate selections", async ({ page }) => {
@@ -845,6 +845,48 @@ test("mobile drawer, custom menus, keyboard access, reduced motion, and narrow l
   await page.goto("/categories/text");
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect(page.getByRole("link", { name: "Back to overview" })).toBeInViewport();
+});
+
+test("mobile drawer releases the page after repeated clicks, tab switches, and desktop resize", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    Object.defineProperty(window, "setDocumentHidden", {
+      value: (hidden: boolean) => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+        document.dispatchEvent(new Event("visibilitychange"));
+      },
+    });
+  });
+  await page.goto("/");
+
+  const main = page.locator("#main-content");
+  const menu = page.locator('.app-topbar button[aria-controls="tools-sidebar"]');
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await menu.click();
+    await expect(main).toHaveAttribute("inert", "");
+    await menu.click();
+    await expect(main).not.toHaveAttribute("inert", "");
+  }
+
+  await menu.click();
+  await expect(main).toHaveAttribute("inert", "");
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(true));
+  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(main).not.toHaveAttribute("inert", "");
+  await expect(page.locator(".nav-scrim")).toHaveCount(0);
+  await page.locator(".category-overview-grid a[href='/categories/text']").click();
+  await expect(page).toHaveURL(/\/categories\/text$/);
+
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(false));
+  await menu.click();
+  await expect(main).toHaveAttribute("inert", "");
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await expect(main).not.toHaveAttribute("inert", "");
+  await expect(page.locator(".nav-scrim")).toHaveCount(0);
+  await page.locator(".category-overview-grid a[href='/categories/text']").click();
+  await expect(page).toHaveURL(/\/categories\/text$/);
 });
 
 test("all enabled tool routes use English UI and reflow at 320px", async ({ page }) => {

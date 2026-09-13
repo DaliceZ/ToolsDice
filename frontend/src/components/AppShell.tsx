@@ -135,6 +135,28 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mobileOpen]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const desktopLayout = window.matchMedia("(min-width: 1024px)");
+    const closeWhenInactive = () => {
+      if (document.hidden || desktopLayout.matches) setMobileOpen(false);
+    };
+    const closeWhenWindowLosesFocus = () => setMobileOpen(false);
+    document.addEventListener("visibilitychange", closeWhenInactive);
+    desktopLayout.addEventListener("change", closeWhenInactive);
+    window.addEventListener("blur", closeWhenWindowLosesFocus);
+    closeWhenInactive();
+    return () => {
+      document.removeEventListener("visibilitychange", closeWhenInactive);
+      desktopLayout.removeEventListener("change", closeWhenInactive);
+      window.removeEventListener("blur", closeWhenWindowLosesFocus);
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.key]);
+
   const toggleCategory = (category: ToolCategory) => {
     setExpandedCategories((current) => {
       const next = new Set(current);
