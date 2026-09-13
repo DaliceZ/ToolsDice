@@ -1,71 +1,112 @@
 # ToolsDice agent guide
 
-## Product
+## Product and privacy
 
-ToolsDice is a Thai-first, privacy-first browser utility suite. User text,
-JSON, YAML, URLs, hashes, dates, and PDFs must be processed locally. Never add
-uploading, analytics, input persistence, or payload logging without an explicit
-product decision.
+ToolsDice is an English-default, privacy-first browser utility suite with
+English and Thai UI. Text, JSON, YAML, URLs, dates, PDF files, image files,
+hashes, and Checklist items are
+processed in the browser. Never upload tool inputs, add analytics, persist
+editor contents or selected files, or log payloads without an explicit product
+decision. The backend serves health and public runtime configuration only; it
+must never receive tool input.
+
+Favorites, language, and theme preferences are the only app preferences
+persisted in browser storage. Recent tools are not tracked. Checklist entries
+live in page memory and disappear when the page closes. Importing Checklist
+JSON, copying a result, and downloading a file happen only after the user
+chooses the matching action.
 
 ## Architecture
 
-- `frontend/`: React + Vite + TypeScript + Tailwind CSS. React Router owns URLs,
-  TanStack Query owns remote runtime config, and local component state owns tool
-  inputs. Reusable UI primitives live in `src/components/ui`.
-- `backend/`: Bun + Elysia. It only exposes health and public runtime config in
-  this MVP; it must not receive tool payloads.
-- Root: Bun workspace scripts and Docker Compose. Production containers serve
-  the frontend with nginx and proxy `/api` to Elysia.
+- `frontend/`: React + Vite + TypeScript + Tailwind CSS. React Router owns tool
+  URLs, TanStack Query owns public runtime config, and local component state
+  owns tool inputs.
+- `frontend/src/lib/tool-registry.ts` is the source of truth for 61 stable tool
+  routes, labels, categories, keywords, and icons.
+- `frontend/src/lib/tool-engines.ts` is the public barrel for pure processing
+  functions. Domain engines live in `frontend/src/lib/tool-engines/`.
+- `frontend/src/pages/ToolWorkspace.tsx` routes each tool to its panel. Text,
+  PDF, image, data, and extended-tool panels load lazily. Import heavy libraries
+  from inside the relevant lazy panel or operation.
+- `frontend/src/pages/TextTools.tsx` contains the text-tool interface and must
+  call local engines without persisting input. Other local panels live in
+  `frontend/src/pages/tools/`.
+- `frontend/src/lib/tool-coverage.ts` maps all 90 source catalog entries to a
+  route and mode. It keeps 87 local capabilities and records the three omitted
+  remote-service features.
+- `backend/`: Bun + Elysia. It exposes health and public runtime config only.
+- Root: Bun workspaces and Docker Compose. Production containers serve the
+  frontend with nginx and proxy `/api` to Elysia.
 
-## Conventions
+The language and theme providers and bilingual tool catalog live in
+`frontend/src/lib`. English is the default UI language; Thai uses Sarabun and
+English uses Poppins. The overview links to nine category pages; a category
+page lists its tools, and each tool has its own local workspace.
 
-- Keep tool metadata in `frontend/src/lib/tool-registry.ts` and pure processing
-  logic in `frontend/src/lib/tool-engines.ts`.
-- Add a stable route slug, Thai label, category, search keywords, and Lucide icon
-  for every tool.
-- Persist only appearance, favorites, and recent tool IDs. Never persist editor
-  contents or selected files.
-- Render errors as user-actionable Thai messages. Do not use `eval` or inject
-  user content as HTML.
-- Update this file in the same change whenever architecture, conventions,
-  workflow, privacy constraints, or validation commands change.
+## Tool catalog and conventions
 
-## Visual system
+The catalog has 61 routes in nine categories: PDF, Text, Images, Developer,
+Converters, Data, Generators, Date & Time, and Calculators. Multiple source
+features may share a route when they are modes of the same tool, such as PDF
+Workspace, JSON Toolkit, CSV Workspace, and URL Toolkit. The Checklist replaces the source
+shared checklist with an in-memory, user-controlled local version. Short Link,
+Burn Note, and YouTube conversion are excluded because they require remote
+storage or an external API.
 
-- The product is dark-only: use near-black slate-neutral surfaces with dark blue
-  supporting actions and selected states. Do not add light/system theme controls
-  or green UI colors without an explicit product change.
-- Follow Radix-style color roles: lowest steps for app/card backgrounds,
-  middle steps for interactions and borders, and highest steps for text.
-- Keep decorative blue light at or below 7% opacity on the dark canvas.
-- Group the all-tools dashboard and sidebar by category. Each category keeps a
-  consistent muted accent: text/cyan, date-time/sky, data/amber,
-  developer/indigo, and documents/rose. Category color is supplementary; text,
-  labels, borders, and spacing must still communicate grouping without color.
+- Add every tool to `tool-registry.ts` with a stable slug, English and Thai
+  labels, descriptions, category, search keywords, and Lucide icon. Update the
+  runtime config allowlist and coverage matrix when catalog routes change.
+- Keep processing deterministic and local in domain engines. Return
+  user-actionable errors in the selected language; do not use `eval` or render
+  user input as HTML.
+- Markdown Preview must render a parsed safe block model. Only `http` and
+  `https` links may become anchors; raw HTML and unsafe URL schemes stay text.
+- Thai money reading accepts decimal currency up to satang precision and
+  rejects malformed or over-precise input with a local actionable error.
+- Validate file type, size, and page selection in the browser before processing.
+- Do not add an API endpoint for tool payloads. Runtime configuration must stay
+  independent of user input.
+
+## Visual system and UX
+
+- The default Classic theme is a light, minimal cream palette with dark
+  readable text, warm neutral borders, and terracotta primary actions. The
+  custom theme menu offers Classic, Dark, Exclusive, Matcha, and Volcano; each
+  theme must update all surfaces, text, controls, borders, and category accents.
+- Use muted category accents consistently: rose for PDF and images, cyan for
+  text, indigo for developer tools and generators, amber for converters, data,
+  and calculations, and sky for date/time. Labels and structure must still
+  communicate grouping without color.
+- Small 3D ambient shapes and the homepage electron orbits are decorative and
+  non-interactive. They run by default and must stop under
+  `prefers-reduced-motion`.
 - Normal text must meet WCAG AA contrast (4.5:1); large text and meaningful UI
-  boundaries must meet at least 3:1.
+  boundaries must meet at least 3:1. Keep layouts usable at 320 CSS pixels and
+  preserve keyboard focus and touch targets.
+- Prioritize expandable search, favorites, and the nine category links on the
+  overview. Search opens from its icon and collapses when focus leaves. Do not
+  show a recent-tools section.
+  Keep each tool workspace focused on its input, result, and next action.
 - Tool cards are one large link target. Keep favorite controls above the link
-  overlay so the two actions remain distinct and keyboard accessible.
-- Keep mobile layouts compact without shrinking primary touch targets: use the
-  narrow drawer, reduced page/card padding, and shorter dashboard hero defined
-  by the shared shell and primitives. Keep a 16px page gutter on small screens,
-  render recent tools as one horizontally scrollable row, and use compact
-  horizontal dashboard cards with clamped descriptions on mobile. The mobile
-  drawer scrim must stay neutral black/transparent and must not inherit blue or
-  category accent colors.
-- Ambient background motion must remain decorative, subtle, non-interactive,
-  and disabled by `prefers-reduced-motion`. Never let motion delay or obscure a
-  user action.
-- Use restrained translucent glass surfaces with neutral borders and blur for
-  the shell, dashboard panels, and tool cards. Keep the sidebar brand divider
-  aligned with the main top-bar divider at every breakpoint.
-- The top bar includes one compact external portfolio action labeled `ผลงาน`
-  linking to `https://www.dalalight.online/`; keep it usable on mobile without
-  increasing the bar height.
-- Treat intentionally removed UI and copy as a product decision. Do not restore
-  it unless the user explicitly asks for it.
-- The public Supabase `toolicon.png` is the product mark in the header and page
-  metadata. Do not substitute it without an explicit design change.
+  overlay so both actions remain distinct and keyboard accessible.
+- Keep all routes responsive without oversized fixed-width content. Keep at
+  least 16px page gutters and reflow workspaces at narrow container widths. Use
+  the mobile drawer, compact horizontal tool cards, and a neutral
+  black/transparent drawer scrim. Hide the sidebar scrollbar except while
+  scrolling or interacting with the sidebar. Give overview and category pages
+  additional responsive inset spacing inside the main page gutter.
+- Use restrained translucent glass surfaces with neutral borders and blur. The
+  sidebar starts directly beneath the top bar without a duplicate brand header.
+- The top bar includes an icon-and-text Portfolio action linking to
+  `https://www.dalalight.online/`, a custom Thai/English language dropdown, and
+  a custom five-theme dropdown. Keep Portfolio at the far right of the top bar
+  and put the responsive sidebar open/close control beside the ToolsDice brand.
+  Sidebar category rows expand their tools and are not category-page links.
+- Use the selected product mark at
+  `https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/logo2.png`
+  in the header and page metadata.
+- Use the findings and limitations in `docs/youth-ux-research.md` as desk
+  research, not as a substitute for testing with Thai ToolsDice users.
 
 ## Validation
 
@@ -74,10 +115,15 @@ product decision.
 - Development (one app): `bun run dev:api` or `bun run dev:web`
 - Type check: `bun run typecheck`
 - Lint: `bun run lint`
-- Unit/API tests: `bun run test`
+- Unit/API tests, including catalog coverage: `bun run test`
 - Production build: `bun run build`
 - Browser smoke tests: `bun run test:e2e`
 - Containers: `docker compose up --build`
+
+For changes to tool processing or layouts, run typecheck, lint, unit/API tests,
+build, and browser smoke tests. Browser checks should include direct tool routes,
+runtime config, keyboard focus, reduced motion, privacy behavior, and a 320px
+viewport when relevant.
 
 Local Bun is required unless Docker is used. Copy `.env.example` to `.env` only
 when overriding defaults; never commit secrets.

@@ -1,164 +1,465 @@
-import { useState, type ReactNode } from "react";
-import { ExternalLink, LayoutGrid, Menu, X } from "lucide-react";
-import { Link, NavLink } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { categoryStyles } from "@/lib/category-styles";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  ArrowUpRight,
+  BriefcaseBusiness,
+  ChevronDown,
+  ChevronRight,
+  Dice5,
+  Languages,
+  Menu,
+  Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { useRuntimeConfig } from "@/lib/api";
+import { useLanguage } from "@/lib/language";
+import { themes, useTheme, type ThemeId } from "@/lib/theme";
+import { categoryName, categorySlugs, toolDescription, toolName } from "@/lib/tool-locales";
 import { categories, tools, type ToolCategory } from "@/lib/tool-registry";
+import { categoryStyles } from "@/lib/category-styles";
 import { cn } from "@/lib/utils";
 
-const toolIconUrl =
-  "https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/toolicon.png";
+type Choice = {
+  value: string;
+  label: string;
+  compact: string;
+  detail?: string;
+  colors?: string[];
+};
+
+function ChoiceMenu({
+  label,
+  value,
+  icon: Icon,
+  choices,
+  onSelect,
+}: {
+  label: string;
+  value: string;
+  icon: LucideIcon;
+  choices: Choice[];
+  onSelect: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const current = choices.find((choice) => choice.value === value) ?? choices[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const activeIndex = optionRefs.current.findIndex((item) => item === document.activeElement);
+        const start = activeIndex < 0 ? (event.key === "ArrowDown" ? -1 : 0) : activeIndex;
+        const next = (start + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
+        event.preventDefault();
+        optionRefs.current[next]?.focus();
+      } else if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        optionRefs.current[event.key === "Home" ? 0 : choices.length - 1]?.focus();
+      } else if (event.key === "Tab") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [choices.length, open]);
+
+  const showMenu = () => {
+    setOpen(true);
+    window.setTimeout(() => optionRefs.current[0]?.focus(), 0);
+  };
+
+  return (
+    <div className="choice-menu" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="choice-menu-trigger"
+        aria-label={`${label}: ${current.label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={`${label}: ${current.label}`}
+        onClick={() => open ? setOpen(false) : showMenu()}
+      >
+        <Icon aria-hidden="true" size={17} />
+        <span className="choice-menu-current">{current.compact}</span>
+        <ChevronDown aria-hidden="true" className="choice-menu-chevron" size={14} />
+      </button>
+      {open && (
+        <div className="choice-menu-popover" role="menu" aria-label={label}>
+          {choices.map((choice, index) => (
+            <button
+              ref={(element) => { optionRefs.current[index] = element; }}
+              type="button"
+              role="menuitemradio"
+              aria-checked={choice.value === value}
+              className="choice-menu-option"
+              key={choice.value}
+              onClick={() => {
+                onSelect(choice.value);
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+            >
+              {choice.colors && (
+                <span className="choice-menu-swatches" aria-hidden="true">
+                  {choice.colors.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
+                </span>
+              )}
+              <span className="choice-menu-option-copy">
+                <span>{choice.label}</span>
+                {choice.detail && <small>{choice.detail}</small>}
+              </span>
+              {choice.value === value && <span className="choice-menu-check" aria-hidden="true">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LanguageMenu({
+  language,
+  setLanguage,
+}: {
+  language: "th" | "en";
+  setLanguage: (language: "th" | "en") => void;
+}) {
+  const { text } = useLanguage();
+  const choices: Choice[] = [
+    { value: "en", label: "English", compact: "EN", detail: "Poppins" },
+    { value: "th", label: "ไทย", compact: "ไทย", detail: "Sarabun" },
+  ];
+  return (
+    <ChoiceMenu
+      label={text("เปลี่ยนภาษา", "Language")}
+      value={language}
+      icon={Languages}
+      choices={choices}
+      onSelect={(value) => setLanguage(value as "th" | "en")}
+    />
+  );
+}
+
+function ThemeMenu() {
+  const { language, text } = useLanguage();
+  const { theme, setTheme } = useTheme();
+  const choices: Choice[] = themes.map((item) => ({
+    value: item.id,
+    label: item.label,
+    compact: item.label,
+    detail: language === "en" ? item.detail : {
+      classic: "ครีมและสีน้ำตาลอิฐ",
+      dark: "สเลตและม่วงอ่อน",
+      exclusive: "มิดไนต์และสีทอง",
+      matcha: "เขียวเสจและมัทฉะ",
+      volcano: "แดง ส้ม และดำ",
+    }[item.id],
+    colors: {
+      classic: ["#fff9f0", "#91452e", "#e9d9c8"],
+      dark: ["#15171d", "#a59af5", "#3c414d"],
+      exclusive: ["#171223", "#d7b66b", "#48395f"],
+      matcha: ["#f3f7ef", "#49744d", "#d0dfcb"],
+      volcano: ["#171310", "#e55336", "#f2943d"],
+    }[item.id],
+  }));
+  return (
+    <ChoiceMenu
+      label={text("เปลี่ยนธีม", "Theme")}
+      value={theme}
+      icon={Palette}
+      choices={choices}
+      onSelect={(value) => setTheme(value as ThemeId)}
+    />
+  );
+}
+
 const toolCategories = categories.filter(
   (category): category is ToolCategory => category !== "ทั้งหมด",
 );
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const { language, setLanguage, text } = useLanguage();
+  const { config } = useRuntimeConfig();
+  const location = useLocation();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const activeTool = tools.find(
+    (tool) => location.pathname === "/tools/" + tool.id,
+  );
+  const activeCategory = activeTool?.category ?? toolCategories.find(
+    (category) => location.pathname === "/categories/" + categorySlugs[category],
+  );
+  const [expandedCategories, setExpandedCategories] = useState<Set<ToolCategory>>(
+    () => new Set(activeCategory ? [activeCategory] : []),
+  );
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarStyle = useMemo(
+    () => ({ "--sidebar-width": sidebarCollapsed ? "5rem" : "21rem" }) as CSSProperties,
+    [sidebarCollapsed],
+  );
+
+  useEffect(() => {
+    if (activeCategory) {
+      setExpandedCategories((current) => new Set(current).add(activeCategory));
+    }
+  }, [activeCategory]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        menuButtonRef.current?.focus({ preventScroll: true });
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
+  const toggleCategory = (category: ToolCategory) => {
+    setExpandedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
+  const closeMobile = () => {
+    menuButtonRef.current?.focus({ preventScroll: true });
+    setMobileOpen(false);
+  };
+  const toggleMobile = () => setMobileOpen((value) => !value);
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
-      {open && (
-        <button
-          aria-label="ปิดเมนู"
-          className="nav-scrim fixed inset-0 z-30 bg-black/45 backdrop-blur-[2px] lg:hidden"
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside
-        className={cn(
-          "glass-shell fixed inset-y-0 left-0 z-40 flex w-[min(84vw,272px)] -translate-x-full flex-col border-r border-white/10 bg-[#0d0f12]/82 text-white shadow-2xl shadow-black/45 transition-transform duration-300 ease-out will-change-transform lg:sticky lg:top-0 lg:h-screen lg:w-[280px] lg:translate-x-0 lg:shadow-none",
-          open && "translate-x-0",
-        )}
-      >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-3 lg:h-16 lg:px-4">
+    <div className="app-shell min-h-screen overflow-x-clip" style={sidebarStyle}>
+      <div className="ambient-scene" aria-hidden="true">
+        <span className="ambient-planet ambient-planet-one" />
+        <span className="ambient-planet ambient-planet-two" />
+        <span className="ambient-orbit ambient-orbit-one" />
+        <span className="ambient-orbit ambient-orbit-two" />
+        <span className="ambient-cube">
+          <i className="cube-face cube-front" />
+          <i className="cube-face cube-side" />
+          <i className="cube-face cube-top" />
+        </span>
+      </div>
+
+      <a className="skip-link" href="#main-content">
+        {text("ข้ามไปยังเนื้อหา", "Skip to content")}
+      </a>
+
+      <header className="app-topbar glass-shell sticky top-0 z-50 flex h-[76px] items-center justify-between gap-2 border-b border-border/80 px-3 sm:gap-3 sm:px-6 lg:h-[84px]">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             to="/"
-            className="flex min-w-0 items-center gap-2.5"
-            onClick={() => setOpen(false)}
+            className="flex min-w-0 items-center gap-2.5 rounded-xl text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="ToolsDice"
           >
-            <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-blue-950 shadow-lg shadow-black/25 lg:size-10">
+            <span className="brand-die grid size-10 shrink-0 place-items-center rounded-2xl">
               <img
-                src={toolIconUrl}
+                className="brand-mark"
+                src="https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/logo2.png"
                 alt=""
-                width="48"
-                height="48"
-                className="size-full object-cover"
-                referrerPolicy="no-referrer"
+                width="30"
+                height="30"
               />
             </span>
-            <span className="min-w-0">
-              <strong className="block truncate text-sm tracking-tight lg:text-base">
-                ToolsDice
-              </strong>
-              <span className="block max-w-36 truncate text-[11px] text-blue-100/55">
-                Everyday utility toolkit
-              </span>
-            </span>
+            <span className="brand-name text-[30px] leading-none font-bold tracking-tight">ToolsDice</span>
           </Link>
-          <Button
-            className="lg:hidden"
-            variant="ghost"
-            size="icon"
-            onClick={() => setOpen(false)}
-            aria-label="ปิดเมนู"
+          <button
+            ref={menuButtonRef}
+            type="button"
+            className="shell-icon-button inline-grid lg:hidden"
+            aria-label={mobileOpen ? text("ปิดเมนู", "Close menu") : text("เปิดเมนู", "Open menu")}
+            aria-expanded={mobileOpen}
+            aria-controls="tools-sidebar"
+            onClick={toggleMobile}
           >
-            <X size={20} />
-          </Button>
+            {mobileOpen ? <X size={19} /> : <Menu size={20} />}
+          </button>
+          <button
+            type="button"
+            className="sidebar-edge-toggle shell-icon-button hidden lg:inline-grid"
+            aria-label={
+              sidebarCollapsed
+                ? text("ขยายแถบด้านข้าง", "Expand sidebar")
+                : text("ย่อแถบด้านข้าง", "Collapse sidebar")
+            }
+            aria-pressed={sidebarCollapsed}
+            onClick={() => setSidebarCollapsed((value) => !value)}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+          </button>
         </div>
 
-        <nav
-          aria-label="เครื่องมือ"
-          className="flex-1 overflow-y-auto px-2.5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:px-3 lg:py-4"
+        <div
+          className="topbar-actions flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2.5"
+          aria-hidden={mobileOpen}
+          inert={mobileOpen}
         >
-          <section className="mb-4 lg:mb-5">
-            <p className="mb-2 px-3 text-[11px] font-black uppercase tracking-[0.16em] text-blue-900/40 dark:text-blue-100/40">
-              Overview
-            </p>
-            <NavLink
-              to="/"
-              end
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex min-h-10 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-[13px] font-semibold transition-colors lg:gap-3 lg:px-3 lg:py-2.5 lg:text-sm",
-                  isActive
-                    ? "bg-blue-950 text-white shadow-md dark:bg-[#172c4a] dark:text-blue-100"
-                    : "text-blue-950/65 hover:bg-blue-100 dark:text-white/55 dark:hover:bg-white/[0.055]",
-                )
-              }
-            >
-              <LayoutGrid size={18} />
-              เครื่องมือทั้งหมด
-            </NavLink>
-          </section>
-
-          {toolCategories.map((category) => {
-            const style = categoryStyles[category];
-            return (
-              <section key={category} className="mb-4 lg:mb-5">
-                <div className="mb-1.5 flex items-center gap-2 px-3">
-                  <span className={cn("size-2 rounded-full", style.accent)} />
-                  <h2
-                    className={cn(
-                      "text-[11px] font-black uppercase tracking-[0.14em]",
-                      style.eyebrow,
-                    )}
-                  >
-                    {category}
-                  </h2>
-                </div>
-                <div className="border-l border-blue-900/10 pl-2 dark:border-blue-200/10">
-                  {tools
-                    .filter((tool) => tool.category === category)
-                    .map((tool) => (
-                      <NavLink
-                        key={tool.id}
-                        to={`/tools/${tool.id}`}
-                        onClick={() => setOpen(false)}
-                        className={({ isActive }) =>
-                          cn(
-                            "my-0.5 flex min-h-9 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-[13px] transition-colors lg:gap-3 lg:px-3 lg:py-2 lg:text-sm",
-                            isActive
-                              ? cn(style.icon, "font-bold")
-                              : "text-blue-950/60 hover:bg-blue-100/70 hover:text-blue-950 dark:text-white/50 dark:hover:bg-white/[0.055] dark:hover:text-white",
-                          )
-                        }
-                      >
-                        <tool.icon size={16} className="shrink-0" />
-                        <span className="truncate">{tool.name}</span>
-                      </NavLink>
-                    ))}
-                </div>
-              </section>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <div className="min-w-0">
-        <header className="glass-shell sticky top-0 z-20 flex h-14 items-center justify-between border-b border-white/10 bg-[#090a0c]/68 px-4 text-white lg:h-16 md:px-6">
-          <Button
-            className="lg:hidden"
-            variant="ghost"
-            size="icon"
-            onClick={() => setOpen(true)}
-            aria-label="เปิดเมนู"
-          >
-            <Menu size={21} />
-          </Button>
+          <LanguageMenu language={language} setLanguage={setLanguage} />
+          <ThemeMenu />
           <a
+            className="portfolio-link"
             href="https://www.dalalight.online/"
             target="_blank"
             rel="noreferrer"
-            className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.055] px-3 text-xs font-semibold text-white/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.08)] transition hover:border-blue-300/25 hover:bg-blue-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 sm:text-sm"
           >
-            ผลงาน
-            <ExternalLink size={14} />
+            <BriefcaseBusiness aria-hidden="true" size={17} />
+            <span>Portfolio</span>
+            <ArrowUpRight aria-hidden="true" className="portfolio-arrow" size={14} />
           </a>
-        </header>
-        <main className="grid-noise min-h-[calc(100vh-3.5rem)] px-5 py-4 lg:min-h-[calc(100vh-4rem)] md:p-6 xl:p-8">
-          {children}
-        </main>
-      </div>
+        </div>
+      </header>
+
+      {mobileOpen && (
+        <div
+          className="nav-scrim fixed inset-0 z-30 bg-[#30251e]/20 backdrop-blur-[2px] lg:hidden"
+          aria-hidden="true"
+          onClick={closeMobile}
+        />
+      )}
+
+      <aside
+        id="tools-sidebar"
+        className={cn(
+          "sidebar-scroll glass-shell fixed bottom-0 left-0 top-[76px] z-40 flex w-[min(21rem,88vw)] flex-col border-r border-border/80 transition-[width,transform] duration-300 ease-out lg:top-[84px] lg:w-[var(--sidebar-width)] lg:translate-x-0",
+          mobileOpen
+            ? "visible translate-x-0 shadow-[18px_0_48px_rgba(76,54,38,0.12)]"
+            : "invisible -translate-x-full lg:visible lg:shadow-none",
+        )}
+        aria-label={text("แถบเมนูเครื่องมือ", "Tools navigation")}
+      >
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label={text("หมวดหมู่", "Categories")}>
+          <div className="mb-4 flex min-w-0 items-center gap-1">
+            <Link
+              to="/"
+              onClick={closeMobile}
+              className={cn(
+                "sidebar-home flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-sm font-semibold",
+                location.pathname === "/" && "sidebar-home-active",
+                sidebarCollapsed && "lg:justify-center lg:px-0",
+              )}
+              title={sidebarCollapsed ? text("ภาพรวม", "Overview") : undefined}
+            >
+              <Dice5 aria-hidden="true" size={18} />
+              <span className={cn("truncate", sidebarCollapsed && "lg:hidden")}>
+                {text("ภาพรวม", "Overview")}
+              </span>
+            </Link>
+          </div>
+
+          <div className={cn("mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.13em] text-muted-foreground", sidebarCollapsed && "lg:hidden")}>
+            {text("หมวดหมู่", "Categories")}
+          </div>
+          <div className="space-y-2">
+            {toolCategories.map((category) => {
+              const icon = tools.find((tool) => tool.category === category)?.icon ?? Dice5;
+              const Icon = icon;
+              const categoryTools = tools.filter(
+                (tool) => tool.category === category && config.enabledToolIds.includes(tool.id),
+              );
+              const expanded = expandedCategories.has(category);
+              const style = categoryStyles[category];
+              const groupId = "sidebar-category-" + categorySlugs[category];
+              return (
+                <section key={category} className="min-w-0">
+                  <div className={cn("sidebar-category-row flex min-h-11 items-center gap-1 rounded-xl px-2", sidebarCollapsed && "lg:justify-center lg:px-0")}>
+                    <button
+                      type="button"
+                      title={sidebarCollapsed ? categoryName(category, language) : undefined}
+                      className={cn(
+                        "sidebar-category-main flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1.5 text-left text-sm font-semibold",
+                        sidebarCollapsed && "lg:flex-none lg:justify-center lg:px-0",
+                        activeCategory === category && "text-foreground",
+                      )}
+                      aria-expanded={expanded}
+                      aria-controls={groupId}
+                      onClick={() => {
+                        if (sidebarCollapsed) setSidebarCollapsed(false);
+                        toggleCategory(category);
+                      }}
+                    >
+                      <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", style.icon)}>
+                        <Icon size={17} />
+                      </span>
+                      <span className={cn("min-w-0 flex-1 truncate", sidebarCollapsed && "lg:hidden")}>
+                        {categoryName(category, language)}
+                      </span>
+                      <span className={cn("mr-1 text-[11px] font-medium text-muted-foreground", sidebarCollapsed && "lg:hidden")}>
+                        {categoryTools.length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={cn("sidebar-disclosure inline-grid", sidebarCollapsed && "lg:hidden")}
+                      aria-label={
+                        (expanded ? text("ซ่อนเครื่องมือในหมวด", "Hide tools in ") : text("แสดงเครื่องมือในหมวด", "Show tools in ")) +
+                        " " + categoryName(category, language)
+                      }
+                      aria-expanded={expanded}
+                      aria-controls={groupId}
+                      onClick={() => toggleCategory(category)}
+                    >
+                      {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  </div>
+                  {expanded && !sidebarCollapsed && (
+                    <div id={groupId} className="sidebar-tool-list mt-1 ml-5 space-y-1 border-l border-border/80 pl-3">
+                      {categoryTools.map((tool) => (
+                        <NavLink
+                          key={tool.id}
+                          to={"/tools/" + tool.id}
+                          state={{ from: "/" }}
+                          onClick={closeMobile}
+                          className={({ isActive }) =>
+                            cn("sidebar-tool-link flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-[13px]", isActive && "sidebar-tool-link-active")
+                          }
+                          title={toolDescription(tool, language)}
+                        >
+                          <tool.icon aria-hidden="true" className="shrink-0 opacity-75" size={15} />
+                          <span className="min-w-0 truncate">{toolName(tool, language)}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className={cn("shrink-0 border-t border-border/70 px-4 py-4 text-xs leading-5 text-muted-foreground", sidebarCollapsed && "lg:hidden")}>
+          {text("ข้อความและไฟล์ทำงานในเบราว์เซอร์", "Text and files stay in your browser")}
+        </div>
+      </aside>
+
+      <main
+        id="main-content"
+        className="relative z-10 min-h-[calc(100vh-76px)] px-4 py-5 sm:px-6 sm:py-7 lg:min-h-[calc(100vh-84px)] lg:py-9 lg:pl-[var(--sidebar-width)]"
+        aria-hidden={mobileOpen}
+        inert={mobileOpen}
+      >
+        <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+      </main>
     </div>
   );
 }

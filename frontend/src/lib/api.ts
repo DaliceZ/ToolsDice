@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ToolId } from "./tool-registry";
+import { tools, type ToolId } from "./tool-registry";
 
 export type RuntimeConfig = {
   appName: string;
@@ -14,20 +14,7 @@ type Envelope<T> = {
 
 export const fallbackConfig: RuntimeConfig = {
   appName: "ToolsDice",
-  enabledToolIds: [
-    "text-transformer",
-    "text-statistics",
-    "text-diff",
-    "timestamp-converter",
-    "timezone-converter",
-    "date-calculator",
-    "json-toolkit",
-    "json-yaml",
-    "base64",
-    "url-toolkit",
-    "hash-uuid",
-    "pdf-workspace",
-  ],
+  enabledToolIds: tools.map((tool) => tool.id),
   maxLocalFileBytes: Number(
     import.meta.env.VITE_MAX_LOCAL_FILE_BYTES ?? 104_857_600,
   ),

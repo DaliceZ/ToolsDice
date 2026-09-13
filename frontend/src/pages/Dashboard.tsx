@@ -1,283 +1,349 @@
-import { useMemo, useState } from "react";
-import { ArrowUpRight, Clock3, Search, Star } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowRight, ArrowUpRight, Check, Search, Star, X } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { useRuntimeConfig } from "@/lib/api";
 import { categoryStyles } from "@/lib/category-styles";
+import { useLanguage } from "@/lib/language";
 import {
-  categories,
-  tools,
-  type ToolCategory,
-  type ToolDefinition,
-} from "@/lib/tool-registry";
+  categoryDescriptions,
+  categoryName,
+  categorySlugs,
+  toolDescription,
+  toolName,
+} from "@/lib/tool-locales";
 import { usePreferences } from "@/lib/preferences";
+import { categories, tools, type ToolCategory, type ToolDefinition } from "@/lib/tool-registry";
 import { cn } from "@/lib/utils";
 
-const toolIconUrl =
-  "https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/toolicon.png";
 const toolCategories = categories.filter(
   (category): category is ToolCategory => category !== "ทั้งหมด",
 );
-const categoryDescriptions: Record<ToolCategory, string> = {
-  ข้อความ: "จัดรูปแบบ นับ และเปรียบเทียบข้อความ",
-  วันเวลา: "แปลงเขตเวลาและคำนวณช่วงเวลา",
-  ข้อมูล: "ตรวจและแปลงข้อมูล JSON กับ YAML",
-  นักพัฒนา: "เครื่องมือรวดเร็วสำหรับงานพัฒนา",
-  เอกสาร: "จัดการหน้า PDF ภายใน browser",
-};
 
 export function Dashboard() {
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<"ทั้งหมด" | ToolCategory>("ทั้งหมด");
-  const { favorites, recent, toggleFavorite } = usePreferences();
+  const { language, text } = useLanguage();
+  const navigate = useNavigate();
+  const { favorites, toggleFavorite } = usePreferences();
   const { config } = useRuntimeConfig();
-
-  const filtered = useMemo(
-    () =>
-      tools.filter((tool) => {
-        const query = search.toLocaleLowerCase().trim();
-        const categoryMatches =
-          category === "ทั้งหมด" || tool.category === category;
-        const searchMatches =
-          !query ||
-          [tool.name, tool.description, tool.category, ...tool.keywords]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(query);
-        return (
-          config.enabledToolIds.includes(tool.id) &&
-          categoryMatches &&
-          searchMatches
-        );
-      }),
-    [search, category, config.enabledToolIds],
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const enabledTools = useMemo(
+    () => tools.filter((tool) => config.enabledToolIds.includes(tool.id)),
+    [config.enabledToolIds],
+  );
+  const favoriteTools = useMemo(
+    () => enabledTools.filter((tool) => favorites.includes(tool.id)),
+    [enabledTools, favorites],
   );
 
-  const groups = toolCategories
-    .map((name) => ({
-      name,
-      tools: filtered.filter((tool) => tool.category === name),
-    }))
-    .filter((group) => group.tools.length > 0);
+  const suggestions = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase(language);
+    if (!query) return [];
+    return enabledTools
+      .map((tool) => {
+        const name = toolName(tool, language).toLocaleLowerCase(language);
+        const description = toolDescription(tool, language).toLocaleLowerCase(language);
+        const category = categoryName(tool.category, language).toLocaleLowerCase(language);
+        const keywords = tool.keywords.map((word) => word.toLocaleLowerCase(language));
+        const score = name.startsWith(query)
+          ? 0
+          : name.includes(query)
+            ? 1
+            : category.startsWith(query)
+              ? 2
+              : keywords.some((word) => word.startsWith(query))
+                ? 3
+                : keywords.some((word) => word.includes(query))
+                  ? 4
+                  : description.includes(query)
+                    ? 5
+                    : 99;
+        return { tool, score };
+      })
+      .filter((item) => item.score < 99)
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 7)
+      .map((item) => item.tool);
+  }, [enabledTools, language, search]);
+
+  useEffect(() => {
+    if (searchOpen) inputRef.current?.focus();
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!searchRef.current?.contains(event.target as Node)) setSearchOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [searchOpen]);
+
+  useEffect(() => setActiveSuggestion(0), [search]);
+
+  const openTool = (tool: ToolDefinition) => {
+    setSearchOpen(false);
+    navigate("/tools/" + tool.id, { state: { from: "/" } });
+  };
+
+  const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" && suggestions.length) {
+      event.preventDefault();
+      setActiveSuggestion((index) => (index + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp" && suggestions.length) {
+      event.preventDefault();
+      setActiveSuggestion((index) => (index - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === "Enter" && suggestions[activeSuggestion]) {
+      event.preventDefault();
+      openTool(suggestions[activeSuggestion]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setSearch("");
+      setSearchOpen(false);
+      window.requestAnimationFrame(() => searchButtonRef.current?.focus());
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-[1440px]">
-      <section className="glass-panel relative mb-4 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgb(23_25_29/.78)_0%,rgb(16_18_22/.72)_48%,rgb(16_43_76/.68)_100%)] px-4 py-4 text-white sm:mb-6 sm:rounded-[2rem] sm:px-6 sm:py-7 md:px-9 md:py-9">
-        <div className="hero-orb absolute -right-20 -top-28 size-80 rounded-full bg-blue-400/15 blur-3xl" />
-        <div className="hero-line absolute bottom-0 left-1/3 h-px w-1/2 bg-gradient-to-r from-transparent via-blue-300/50 to-transparent" />
-        <div className="relative flex flex-col justify-between gap-5 md:flex-row md:items-end md:gap-7">
-          <div>
-            <div className="mb-2.5 flex items-center gap-3 sm:mb-5 sm:gap-4">
-              <span className="grid size-10 place-items-center overflow-hidden rounded-xl border border-white/15 bg-white/10 shadow-xl sm:size-16 sm:rounded-2xl">
-                <img
-                  src={toolIconUrl}
-                  alt="ToolsDice"
-                  width="64"
-                  height="64"
-                  className="size-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </span>
-              <div>
-                <h1 className="text-[1.75rem] font-black tracking-tight sm:text-4xl md:text-6xl">
-                  Tools
-                </h1>
-              </div>
+    <div className="dashboard-page mx-auto max-w-[1280px]">
+      <section className="dashboard-hero">
+        <div className="hero-stage" aria-label="ToolsDice">
+          <div className="hero-title-wrap">
+            <div className="orbit-field" aria-hidden="true">
+              <span className="orbit-track orbit-track-one"><i className="electron" /></span>
+              <span className="orbit-track orbit-track-two"><i className="electron" /></span>
+              <span className="orbit-track orbit-track-three"><i className="electron" /></span>
+              <span className="orbit-track orbit-track-four"><i className="electron" /></span>
+              <span className="orbit-track orbit-track-five"><i className="electron" /></span>
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-blue-50/70 sm:text-base sm:leading-7">
-              ใช้ฟรี จาก Dalalight
+            <h1 className="hero-title">ToolsDice</h1>
+          </div>
+        </div>
+        <p className="hero-subtitle">
+          {text(
+            "เครื่องมือใช้ง่าย ทำงานไว และเก็บข้อมูลไว้ในเบราว์เซอร์ของคุณ",
+            "Friendly tools that work fast and keep your data in this browser.",
+          )}
+        </p>
+
+        <div
+          ref={searchRef}
+          className={cn("search-launcher", searchOpen && "search-launcher-open")}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setSearchOpen(false);
+            }
+          }}
+        >
+          <button
+            ref={searchButtonRef}
+            type="button"
+            className="search-icon-button"
+            aria-label={text("ค้นหาเครื่องมือ", "Search tools")}
+            aria-expanded={searchOpen}
+            aria-hidden={searchOpen}
+            inert={searchOpen}
+            tabIndex={searchOpen ? -1 : 0}
+            onClick={() => setSearchOpen(true)}
+          >
+            <Search aria-hidden="true" size={23} />
+          </button>
+          <div className="search-autocomplete" aria-hidden={!searchOpen} inert={!searchOpen}>
+              <div className="search-field" role="search">
+                <Search aria-hidden="true" className="search-field-icon" size={22} />
+                <input
+                  ref={inputRef}
+                  type="search"
+                  role="combobox"
+                  aria-label={text("ค้นหาเครื่องมือ", "Search tools")}
+                  aria-autocomplete="list"
+                  aria-expanded={suggestions.length > 0}
+                  aria-controls="tool-search-suggestions"
+                  tabIndex={searchOpen ? 0 : -1}
+                  aria-activedescendant={
+                    suggestions[activeSuggestion]
+                      ? "tool-suggestion-" + suggestions[activeSuggestion].id
+                      : undefined
+                  }
+                  autoComplete="off"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={onSearchKeyDown}
+                  placeholder={text("ลองค้นหา JSON, รูปภาพ, นับคำ…", "Try JSON, images, word count…")}
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    className="search-clear-button"
+                    aria-label={text("ล้างคำค้นหา", "Clear search")}
+                    tabIndex={searchOpen ? 0 : -1}
+                    onClick={() => setSearch("")}
+                  >
+                    <X size={17} />
+                  </button>
+                ) : (
+                  <kbd className="search-shortcut hidden sm:inline-flex">ESC</kbd>
+                )}
+              </div>
+              {suggestions.length > 0 && (
+                <ul id="tool-search-suggestions" className="search-suggestions" role="listbox">
+                  {suggestions.map((tool, index) => {
+                    const Icon = tool.icon;
+                    const style = categoryStyles[tool.category];
+                    return (
+                      <li key={tool.id} role="presentation">
+                        <button
+                          id={"tool-suggestion-" + tool.id}
+                          type="button"
+                          role="option"
+                          aria-selected={index === activeSuggestion}
+                          className={cn(
+                            "search-suggestion",
+                            index === activeSuggestion && "search-suggestion-active",
+                          )}
+                          tabIndex={searchOpen ? 0 : -1}
+                          onMouseEnter={() => setActiveSuggestion(index)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => openTool(tool)}
+                        >
+                          <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", style.icon)}>
+                            <Icon size={19} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1 text-left">
+                            <span className="block truncate font-bold">{toolName(tool, language)}</span>
+                            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                              {categoryName(tool.category, language)} · {toolDescription(tool, language)}
+                            </span>
+                          </span>
+                          <ArrowUpRight className="shrink-0 text-muted-foreground" size={16} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {search.trim() && suggestions.length === 0 && (
+                <div className="search-empty" role="status">
+                  {text("ยังไม่พบเครื่องมือ ลองใช้คำค้นอื่น", "No tools found. Try another search.")}
+                </div>
+              )}
+          </div>
+        </div>
+      </section>
+
+      <section className="favorites-panel" aria-labelledby="favorites-heading">
+        <header className="favorites-heading-row">
+          <span className="favorites-icon">
+            <Star size={20} className="fill-current" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="favorites-heading" className="text-lg font-bold sm:text-xl">
+                {text("รายการโปรด", "Favorites")}
+              </h2>
+              <Badge className="favorites-count">
+                {favoriteTools.length} {text("รายการ", "saved")}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+              {text("รวมเครื่องมือที่คุณอยากกลับมาใช้บ่อยๆ", "Keep the tools you reach for close by.")}
             </p>
           </div>
-        </div>
-      </section>
-
-      {recent.length > 0 && (
-        <section className="glass-panel mb-4 overflow-hidden rounded-xl border border-white/10 bg-card/65 px-3 py-2.5 sm:mb-6 sm:rounded-2xl sm:p-4">
-          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-            <h2 className="mr-1 flex shrink-0 items-center gap-1.5 text-xs font-bold text-blue-100 sm:mr-2 sm:gap-2 sm:text-sm">
-              <Clock3 size={16} />
-              ใช้ล่าสุด
-            </h2>
-            {recent.map((id) => {
-              const tool = tools.find((item) => item.id === id);
-              return tool ? (
-                <Link
-                  key={id}
-                  to={`/tools/${id}`}
-                  className="shrink-0 rounded-full border border-blue-100/10 bg-blue-900/70 px-2.5 py-1 text-xs text-white transition hover:border-blue-500 sm:px-3 sm:py-1.5 sm:text-sm"
-                >
-                  {tool.name}
-                </Link>
-              ) : null;
+        </header>
+        {favoriteTools.length > 0 ? (
+          <div className="favorite-tools-row">
+            {favoriteTools.map((tool) => {
+              const Icon = tool.icon;
+              const style = categoryStyles[tool.category];
+              return (
+                <div className={cn("favorite-tool-card", style.border)} key={tool.id}>
+                  <Link to={"/tools/" + tool.id} state={{ from: "/" }} className="favorite-tool-link">
+                    <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", style.icon)}>
+                      <Icon size={19} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold">{toolName(tool, language)}</span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {categoryName(tool.category, language)}
+                      </span>
+                    </span>
+                    <ArrowRight size={16} className="shrink-0 text-amber-700" />
+                  </Link>
+                  <button
+                    type="button"
+                    className="favorite-remove"
+                    aria-label={text("นำออกจากรายการโปรด: ", "Remove from favorites: ") + toolName(tool, language)}
+                    onClick={() => toggleFavorite(tool.id)}
+                  >
+                    <Check size={15} />
+                    <span className="sr-only">{text("บันทึกแล้ว", "Saved")}</span>
+                  </button>
+                </div>
+              );
             })}
           </div>
-        </section>
-      )}
-
-      <section className="glass-panel sticky top-[4.25rem] z-10 mb-5 rounded-xl border border-white/10 bg-[#111418]/72 p-2 sm:mb-7 sm:rounded-2xl sm:p-3 lg:top-[4.75rem]">
-        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:gap-3">
-          <label className="relative flex-1">
-            <span className="sr-only">ค้นหาเครื่องมือ</span>
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-700/50 dark:text-blue-200/50"
-              size={19}
-            />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="ค้นหา เช่น JSON, เวลา, PDF…"
-              className="border-blue-900/10 bg-blue-50/60 pl-10 dark:border-blue-200/10 dark:bg-blue-950/50"
-            />
-          </label>
-          <div className="flex gap-1.5 overflow-x-auto pb-1 lg:gap-2 lg:pb-0">
-            {categories.map((item) => (
-              <Button
-                key={item}
-                size="sm"
-                variant={category === item ? "default" : "outline"}
-                className="shrink-0 px-2.5 text-xs sm:px-3 sm:text-sm"
-                onClick={() => setCategory(item)}
-              >
-                {item}
-              </Button>
-            ))}
+        ) : (
+          <div className="favorites-empty">
+            <span className="favorites-empty-star"><Star size={19} /></span>
+            <span>
+              <strong className="block text-sm">{text("ปักหมุดเครื่องมือที่ใช้บ่อย", "Pin your go-to tools")}</strong>
+              <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                {text("กดไอคอนดาวบนการ์ดเครื่องมือ แล้วรายการโปรดจะอยู่ตรงนี้", "Tap the star on any tool to keep it here.")}
+              </span>
+            </span>
           </div>
-        </div>
+        )}
       </section>
 
-      {groups.length ? (
-        <div className="space-y-4 sm:space-y-7">
-          {groups.map((group) => {
-            const style = categoryStyles[group.name];
+      <section className="category-overview" aria-labelledby="categories-heading">
+        <header className="category-overview-heading">
+          <div>
+            <span className="section-eyebrow">{text("เลือกให้ตรงกับสิ่งที่ทำ", "Pick what you need")}</span>
+            <h2 id="categories-heading" className="mt-1 text-xl font-bold sm:text-2xl">
+              {text("สำรวจ 9 หมวดหมู่", "Explore 9 categories")}
+            </h2>
+          </div>
+          <span className="hidden text-sm text-muted-foreground sm:inline">
+            {enabledTools.length} {text("เครื่องมือพร้อมใช้", "tools ready")}
+          </span>
+        </header>
+        <div className="category-overview-grid">
+          {toolCategories.map((category) => {
+            const Icon = tools.find((tool) => tool.category === category)?.icon;
+            const style = categoryStyles[category];
+            const count = enabledTools.filter((tool) => tool.category === category).length;
             return (
-              <section
-                key={group.name}
-                className={cn(
-                  "glass-panel tool-section overflow-hidden rounded-2xl border p-2.5 sm:p-4 md:rounded-[1.75rem] md:p-6",
-                  style.section,
-                )}
+              <Link
+                key={category}
+                to={"/categories/" + categorySlugs[category]}
+                className={cn("category-overview-card", style.section)}
               >
-                <header className="mb-2.5 flex items-end justify-between gap-3 px-0.5 pt-0.5 sm:mb-5 sm:gap-4 sm:px-0 sm:pt-0">
-                  <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-                    <span
-                      className={cn("h-9 w-1 shrink-0 rounded-full sm:h-11 sm:w-1.5", style.accent)}
-                    />
-                    <div>
-                      <p
-                        className={cn(
-                          "hidden text-xs font-black uppercase tracking-[0.16em] sm:block",
-                          style.eyebrow,
-                        )}
-                      >
-                        Category
-                      </p>
-                      <h2 className="text-xl font-black tracking-tight sm:text-2xl">
-                        {group.name}
-                      </h2>
-                      <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-                        {categoryDescriptions[group.name]}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge className={cn("hidden shrink-0 sm:inline-flex", style.icon)}>
-                    {group.tools.length} เครื่องมือ
-                  </Badge>
-                </header>
-                <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
-                  {group.tools.map((tool) => (
-                    <ToolCard
-                      key={tool.id}
-                      tool={tool}
-                      favorite={favorites.includes(tool.id)}
-                      onFavorite={() => toggleFavorite(tool.id)}
-                    />
-                  ))}
-                </div>
-              </section>
+                <span className={cn("category-overview-icon", style.icon)}>
+                  {Icon && <Icon size={22} aria-hidden="true" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="category-overview-name">{categoryName(category, language)}</span>
+                  <span className="category-overview-description">
+                    {categoryDescriptions[category][language]}
+                  </span>
+                  <span className={cn("category-overview-count", style.eyebrow)}>
+                    {count} {text("เครื่องมือ", "tools")}
+                  </span>
+                </span>
+                <ArrowUpRight
+                  className={cn("category-overview-arrow", style.eyebrow)}
+                  size={19}
+                  aria-hidden="true"
+                />
+              </Link>
             );
           })}
         </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-blue-700/25 bg-white p-12 text-center dark:bg-blue-950/50">
-          <Search className="mx-auto mb-3 text-muted-foreground" />
-          <h2 className="font-bold">ไม่พบเครื่องมือ</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            ลองเปลี่ยนคำค้นหาหรือเลือกหมวดทั้งหมด
-          </p>
-        </div>
-      )}
+      </section>
     </div>
-  );
-}
-
-function ToolCard({
-  tool,
-  favorite,
-  onFavorite,
-}: {
-  tool: ToolDefinition;
-  favorite: boolean;
-  onFavorite: () => void;
-}) {
-  const Icon = tool.icon;
-  const style = categoryStyles[tool.category];
-  return (
-    <Card
-      className={cn(
-        "glass-card tool-card group relative grid min-h-0 grid-cols-[2.25rem_minmax(0,1fr)_2.5rem] items-start gap-x-3 overflow-hidden bg-card/62 p-3 transition duration-300 hover:shadow-xl hover:shadow-black/25 sm:block sm:min-h-56 sm:p-0",
-        style.border,
-      )}
-    >
-      <Link
-        to={`/tools/${tool.id}`}
-        className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
-        aria-label={`เปิด ${tool.name}`}
-      />
-      <span className={cn("absolute inset-x-0 top-0 h-1", style.accent)} />
-      <CardHeader className="contents sm:relative sm:z-[2] sm:flex sm:flex-row sm:items-start sm:justify-between sm:p-5 sm:pb-3">
-        <span
-          className={cn(
-            "relative z-[2] col-start-1 row-start-1 grid size-9 place-items-center rounded-xl transition-transform group-hover:scale-105 sm:size-12 sm:rounded-2xl",
-            style.icon,
-          )}
-        >
-          <Icon size={19} className="sm:size-[23px]" />
-        </span>
-        <Button
-          className="relative z-10 col-start-3 row-start-1"
-          variant="ghost"
-          size="icon"
-          aria-label={`${favorite ? "เลิกปักหมุด" : "ปักหมุด"} ${tool.name}`}
-          onClick={onFavorite}
-        >
-          <Star
-            size={18}
-            className={cn(favorite && "fill-amber-400 text-amber-500")}
-          />
-        </Button>
-      </CardHeader>
-      <CardContent className="pointer-events-none relative z-[2] col-start-2 row-start-1 min-w-0 p-0 sm:p-5 sm:pt-2">
-        <Badge className={cn(style.icon)}>{tool.category}</Badge>
-        <h3 className="mt-2 text-[15px] font-black sm:mt-3 sm:text-lg">{tool.name}</h3>
-        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-muted-foreground sm:mt-1 sm:min-h-12 sm:text-sm sm:leading-6">
-          {tool.description}
-        </p>
-        <span
-          className={cn(
-            "mt-2 hidden items-center gap-1.5 text-xs font-bold sm:mt-4 sm:inline-flex sm:gap-2 sm:text-sm",
-            style.eyebrow,
-          )}
-        >
-          เปิดเครื่องมือ{" "}
-          <ArrowUpRight
-            size={16}
-            className="transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-          />
-        </span>
-      </CardContent>
-    </Card>
   );
 }

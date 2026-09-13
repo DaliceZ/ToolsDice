@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { uiText } from "@/lib/ui-text";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
   Clipboard,
   Download,
-  FilePlus2,
   Heart,
-  LoaderCircle,
   RefreshCw,
-  Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,23 +17,46 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { usePreferences } from "@/lib/preferences";
 import { toolById, type ToolId } from "@/lib/tool-registry";
+import { categoryName, toolDescription, toolName } from "@/lib/tool-locales";
 import {
   base64Decode,
   base64Encode,
+  buildQuery,
+  calculateDateDifference,
   compareText,
   convertStructured,
+  decodeUrlComponent,
   formatInTimeZone,
   formatJson,
-  parsePageSelection,
+  parseQuery,
+  parseUrlComponents,
   parseTimestamp,
   sha,
   textStatistics,
   transformText,
+  wallTimeToInstant,
   type TransformMode,
 } from "@/lib/tool-engines";
 import { useRuntimeConfig } from "@/lib/api";
 import { categoryStyles } from "@/lib/category-styles";
+import { useLanguage } from "@/lib/language";
 import { cn } from "@/lib/utils";
+
+const LazyTextTools = lazy(() => import("./TextToolsRouter").then((module) => ({ default: module.TextToolsRouter })));
+const LazyPdfWorkspace = lazy(() => import("./tools/PdfPanels").then((module) => ({ default: module.PdfWorkspacePanel })));
+const LazyImagePanel = lazy(() => import("./tools/ImagePanels").then((module) => ({ default: module.ImageToolPanel })));
+const LazyDataWorkspace = lazy(() => import("./tools/DataPanels").then((module) => ({ default: module.DataWorkspacePanel })));
+const LazyChecklist = lazy(() => import("./tools/ChecklistTool").then((module) => ({ default: module.ChecklistTool })));
+const LazyExtendedPanel = lazy(() => import("./tools/ExtendedPanels").then((module) => ({ default: module.ExtendedToolPanel })));
+const LazyAdditionalPanel = lazy(() => import("./tools/AdditionalPanels").then((module) => ({ default: module.AdditionalToolPanel })));
+
+function PanelLoading() {
+  return <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground" role="status">{uiText("กำลังเปิดเครื่องมือ…")}</div>;
+}
+
+function LazyPanel({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<PanelLoading />}>{children}</Suspense>;
+}
 
 function Field({
   label,
@@ -49,9 +70,9 @@ function Field({
   return (
     <label className="block">
       <span className="mb-2 flex items-center justify-between text-sm font-semibold">
-        <span>{label}</span>
+        <span>{uiText(label)}</span>
         {hint && (
-          <span className="font-normal text-muted-foreground">{hint}</span>
+          <span className="font-normal text-muted-foreground">{uiText(hint)}</span>
         )}
       </span>
       {children}
@@ -85,19 +106,18 @@ function SafeOutput({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <Card>
+    <Card className="output-card">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <h2 className="font-bold">ผลลัพธ์</h2>
+        <h2 className="font-bold">{uiText("ผลลัพธ์")}</h2>
         {value && (
           <div className="flex gap-2">
             <Button size="sm" onClick={copy}>
               {copied ? <Check size={15} /> : <Clipboard size={15} />}
-              {copied ? "คัดลอกแล้ว" : "คัดลอก"}
+              {copied ? uiText("คัดลอกแล้ว") : uiText("คัดลอก")}
             </Button>
             <Button variant="outline" size="sm" onClick={download}>
               <Download size={15} />
-              ดาวน์โหลด
-            </Button>
+              {uiText("ดาวน์โหลด")}</Button>
           </div>
         )}
       </CardHeader>
@@ -107,14 +127,14 @@ function SafeOutput({
             role="alert"
             className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500"
           >
-            {error}
+            {uiText(error)}
           </p>
         ) : (
           <Textarea
-            aria-label="ผลลัพธ์"
+            aria-label={uiText("ผลลัพธ์")}
             value={value}
             readOnly
-            placeholder="ผลลัพธ์จะแสดงที่นี่"
+            placeholder={uiText("ผลลัพธ์จะแสดงที่นี่")}
           />
         )}
       </CardContent>
@@ -124,21 +144,19 @@ function SafeOutput({
 
 function TransformTool() {
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<TransformMode>("collapse");
+  const [mode, setMode] = useState<TransformMode>("upper");
   const output = transformText(input, mode);
   return (
     <TwoCols>
       <Card>
         <CardHeader>
-          <h2 className="font-bold">ข้อความต้นฉบับ</h2>
+          <h2 className="font-bold">{uiText("ข้อความต้นฉบับ")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <Select
             value={mode}
             onChange={(event) => setMode(event.target.value as TransformMode)}
           >
-            <option value="collapse">จัดช่องว่าง</option>
-            <option value="trim">Trim ทุกบรรทัด</option>
             <option value="upper">UPPERCASE</option>
             <option value="lower">lowercase</option>
             <option value="title">Title Case</option>
@@ -147,7 +165,7 @@ function TransformTool() {
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="วางข้อความที่นี่…"
+            placeholder={uiText("วางข้อความที่นี่…")}
           />
         </CardContent>
       </Card>
@@ -157,36 +175,39 @@ function TransformTool() {
 }
 
 function StatisticsTool() {
+  const { language } = useLanguage();
   const [input, setInput] = useState("");
   const stats = textStatistics(input);
   return (
     <div className="grid gap-5">
       <Card>
         <CardHeader>
-          <h2 className="font-bold">ข้อความ</h2>
+          <h2 className="font-bold">{uiText("ข้อความ")}</h2>
         </CardHeader>
         <CardContent>
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="เริ่มพิมพ์หรือวางข้อความ…"
+            placeholder={uiText("เริ่มพิมพ์หรือวางข้อความ…")}
           />
         </CardContent>
       </Card>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
         {Object.entries({
           ตัวอักษร: stats.characters,
           ไม่รวมช่องว่าง: stats.charactersNoSpaces,
           คำ: stats.words,
           บรรทัด: stats.lines,
+          ย่อหน้า: stats.paragraphs,
+          เวลาอ่าน: stats.readingTimeMinutes ? `${stats.readingTimeMinutes} ${uiText("นาที")}` : `0 ${uiText("นาที")}`,
           Bytes: stats.bytes,
         }).map(([label, value]) => (
           <Card key={label}>
             <CardContent className="pt-5">
-              <strong className="block text-3xl text-blue-500">
-                {value.toLocaleString()}
+              <strong className="block text-3xl text-primary">
+                {value.toLocaleString(language === "en" ? "en-US" : "th-TH")}
               </strong>
-              <span className="text-sm text-muted-foreground">{label}</span>
+              <span className="text-sm text-muted-foreground">{uiText(label)}</span>
             </CardContent>
           </Card>
         ))}
@@ -202,13 +223,13 @@ function DiffTool() {
   return (
     <div className="grid gap-5">
       <TwoCols>
-        <Field label="ก่อนแก้ไข">
+        <Field label={uiText("ก่อนแก้ไข")}>
           <Textarea
             value={before}
             onChange={(event) => setBefore(event.target.value)}
           />
         </Field>
-        <Field label="หลังแก้ไข">
+        <Field label={uiText("หลังแก้ไข")}>
           <Textarea
             value={after}
             onChange={(event) => setAfter(event.target.value)}
@@ -217,7 +238,7 @@ function DiffTool() {
       </TwoCols>
       <Card>
         <CardHeader>
-          <h2 className="font-bold">ความแตกต่าง</h2>
+          <h2 className="font-bold">{uiText("ความแตกต่าง")}</h2>
         </CardHeader>
         <CardContent>
           <div className="min-h-32 whitespace-pre-wrap rounded-xl border border-border bg-background p-4 font-mono text-sm">
@@ -227,7 +248,7 @@ function DiffTool() {
                   key={index}
                   className={
                     part.added
-                      ? "bg-blue-400/25 text-blue-600 dark:text-blue-300"
+                      ? "bg-cyan-100 text-cyan-900"
                       : part.removed
                         ? "bg-red-400/20 text-red-500 line-through"
                         : ""
@@ -238,8 +259,7 @@ function DiffTool() {
               ))
             ) : (
               <span className="text-muted-foreground">
-                ใส่ข้อความทั้งสองฝั่งเพื่อเปรียบเทียบ
-              </span>
+                {uiText("ใส่ข้อความทั้งสองฝั่งเพื่อเปรียบเทียบ")}</span>
             )}
           </div>
         </CardContent>
@@ -249,6 +269,7 @@ function DiffTool() {
 }
 
 function TimestampTool() {
+  const { language } = useLanguage();
   const [input, setInput] = useState(() => Date.now().toString());
   let result = "";
   let error = "";
@@ -258,7 +279,7 @@ function TimestampTool() {
       `ISO: ${date.toISOString()}`,
       `Unix seconds: ${Math.floor(date.getTime() / 1000)}`,
       `Unix milliseconds: ${date.getTime()}`,
-      `เวลาไทย: ${formatInTimeZone(date, "Asia/Bangkok")}`,
+      `${language === "en" ? "Bangkok time" : "เวลาไทย"}: ${formatInTimeZone(date, "Asia/Bangkok", language === "en" ? "en-US" : "th-TH")}`,
     ].join("\n");
   } catch (cause) {
     error = cause instanceof Error ? cause.message : "แปลงเวลาไม่สำเร็จ";
@@ -267,7 +288,7 @@ function TimestampTool() {
     <TwoCols>
       <Card>
         <CardHeader>
-          <h2 className="font-bold">วันเวลาหรือ Timestamp</h2>
+          <h2 className="font-bold">{uiText("วันเวลาหรือ Timestamp")}</h2>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
@@ -279,8 +300,7 @@ function TimestampTool() {
             onClick={() => setInput(Date.now().toString())}
           >
             <RefreshCw size={16} />
-            เวลาปัจจุบัน
-          </Button>
+            {uiText("เวลาปัจจุบัน")}</Button>
         </CardContent>
       </Card>
       <SafeOutput value={result} error={error} />
@@ -300,21 +320,18 @@ const timeZones = [
   "Australia/Sydney",
 ];
 function TimezoneTool() {
+  const { language } = useLanguage();
   const [dateTime, setDateTime] = useState(() =>
-    new Date().toISOString().slice(0, 16),
+    localDateTimeInput(new Date()),
   );
   const [from, setFrom] = useState("Asia/Bangkok");
   const [to, setTo] = useState("UTC");
   let result = "";
   let error = "";
   try {
-    const parts = dateTime.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-    if (!parts) throw new Error("กรุณาระบุวันเวลา");
-    const localGuess = new Date(`${dateTime}:00Z`);
-    const atZone = new Date(
-      localGuess.getTime() - zoneOffset(localGuess, from),
-    );
-    result = `${formatInTimeZone(atZone, from)}\n→\n${formatInTimeZone(atZone, to)}\nISO: ${atZone.toISOString()}`;
+    const atZone = wallTimeToInstant(dateTime, from);
+    const locale = language === "en" ? "en-US" : "th-TH";
+    result = `${formatInTimeZone(atZone, from, locale)}\n→\n${formatInTimeZone(atZone, to, locale)}\nISO: ${atZone.toISOString()}`;
   } catch (cause) {
     error = cause instanceof Error ? cause.message : "แปลงเขตเวลาไม่สำเร็จ";
   }
@@ -322,10 +339,10 @@ function TimezoneTool() {
     <TwoCols>
       <Card>
         <CardHeader>
-          <h2 className="font-bold">ตั้งค่าเวลา</h2>
+          <h2 className="font-bold">{uiText("ตั้งค่าเวลา")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field label="วันและเวลา">
+          <Field label={uiText("วันและเวลา")}>
             <Input
               type="datetime-local"
               value={dateTime}
@@ -333,7 +350,7 @@ function TimezoneTool() {
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="จาก">
+            <Field label={uiText("จาก")}>
               <Select
                 className="w-full"
                 value={from}
@@ -344,7 +361,7 @@ function TimezoneTool() {
                 ))}
               </Select>
             </Field>
-            <Field label="ไปยัง">
+            <Field label={uiText("ไปยัง")}>
               <Select
                 className="w-full"
                 value={to}
@@ -363,67 +380,37 @@ function TimezoneTool() {
   );
 }
 
-function zoneOffset(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  return (
-    Date.UTC(
-      +values.year,
-      +values.month - 1,
-      +values.day,
-      +values.hour,
-      +values.minute,
-      +values.second,
-    ) - date.getTime()
-  );
-}
-
 function DateCalculatorTool() {
-  const [start, setStart] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  );
-  const [end, setEnd] = useState(() =>
-    new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-  );
-  const [amount, setAmount] = useState(7);
-  const [unit, setUnit] = useState<"days" | "hours" | "months">("days");
-  const first = new Date(`${start}T00:00:00`);
-  const second = new Date(`${end}T00:00:00`);
-  const diff = second.getTime() - first.getTime();
-  const adjusted = new Date(first);
-  if (unit === "months") adjusted.setMonth(adjusted.getMonth() + amount);
-  else
-    adjusted.setTime(
-      adjusted.getTime() + amount * (unit === "days" ? 86400000 : 3600000),
-    );
-  const result = `ผลต่าง: ${Math.abs(Math.round(diff / 86400000)).toLocaleString()} วัน (${Math.abs(diff / 3600000).toLocaleString()} ชั่วโมง)\n${amount >= 0 ? "เพิ่ม" : "ลด"} ${Math.abs(amount)} ${unit === "days" ? "วัน" : unit === "hours" ? "ชั่วโมง" : "เดือน"} จากวันเริ่มต้น: ${adjusted.toLocaleString("th-TH")}`;
+  const { language, text } = useLanguage();
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [start, setStart] = useState(() => localDateInput(today));
+  const [end, setEnd] = useState(() => localDateInput(tomorrow));
+  let difference: ReturnType<typeof calculateDateDifference> | null = null;
+  let differenceError = "";
+  try { difference = calculateDateDifference(start, end); }
+  catch (cause) { differenceError = errorMessage(cause); }
+  const locale = language === "en" ? "en-US" : "th-TH";
+  const dayRange = difference
+    ? `${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(`${start}T12:00:00`))} – ${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(`${end}T12:00:00`))}`
+    : "";
   return (
     <TwoCols>
       <Card>
         <CardHeader>
-          <h2 className="font-bold">คำนวณช่วงเวลา</h2>
+          <h2 className="font-bold">{uiText("ช่วงวันที่")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="วันเริ่มต้น">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={uiText("วันเริ่มต้น")}>
               <Input
                 type="date"
                 value={start}
                 onChange={(event) => setStart(event.target.value)}
               />
             </Field>
-            <Field label="วันสิ้นสุด">
+            <Field label={uiText("วันสิ้นสุด")}>
               <Input
                 type="date"
                 value={end}
@@ -431,28 +418,16 @@ function DateCalculatorTool() {
               />
             </Field>
           </div>
-          <div className="grid grid-cols-[1fr_auto] gap-3">
-            <Field label="จำนวน">
-              <Input
-                type="number"
-                value={amount}
-                onChange={(event) => setAmount(Number(event.target.value))}
-              />
-            </Field>
-            <Field label="หน่วย">
-              <Select
-                value={unit}
-                onChange={(event) => setUnit(event.target.value as typeof unit)}
-              >
-                <option value="days">วัน</option>
-                <option value="hours">ชั่วโมง</option>
-                <option value="months">เดือน</option>
-              </Select>
-            </Field>
-          </div>
         </CardContent>
       </Card>
-      <SafeOutput value={result} />
+      {differenceError ? <SafeOutput value="" error={differenceError} /> : difference && <section className="day-difference-output output-panel" aria-live="polite">
+        <h2>{text("ผลต่างของวัน", "Days between")}</h2>
+        <p className="day-difference-range">{dayRange}</p>
+        <div className="day-difference-values">
+          <div><strong>{difference.days.toLocaleString(locale)}</strong><span>{text("รวมเสาร์อาทิตย์", "Including weekends")}</span></div>
+          <div><strong>{difference.workdays.toLocaleString(locale)}</strong><span>{text("ไม่รวมเสาร์อาทิตย์", "Weekdays only")}</span></div>
+        </div>
+      </section>}
     </TwoCols>
   );
 }
@@ -462,36 +437,50 @@ function ConverterTool({ type }: { type: "json" | "yaml" | "base64" | "url" }) {
   const [mode, setMode] = useState(
     type === "json" ? "format" : type === "yaml" ? "json-to-yaml" : "encode",
   );
-  let output = "";
-  let error = "";
-  try {
-    if (type === "json") output = formatJson(input, mode === "minify");
-    if (type === "yaml")
-      output = convertStructured(
-        input,
-        mode as "json-to-yaml" | "yaml-to-json",
-      );
-    if (type === "base64")
-      output = mode === "encode" ? base64Encode(input) : base64Decode(input);
-    if (type === "url") {
-      if (mode === "encode") output = encodeURIComponent(input);
-      else if (mode === "decode") output = decodeURIComponent(input);
-      else {
-        const params = new URLSearchParams(
-          input.includes("?") ? input.slice(input.indexOf("?") + 1) : input,
-        );
-        output = JSON.stringify(Object.fromEntries(params.entries()), null, 2);
-      }
+  const [sortKeys, setSortKeys] = useState(false);
+  const [indent, setIndent] = useState<2 | 4>(2);
+  const [output, setOutput] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setOutput("");
+    setError("");
+    if (!input.trim()) {
+      setPending(false);
+      return () => { live = false; };
     }
-  } catch (cause) {
-    error =
-      cause instanceof Error ? cause.message : "ไม่สามารถประมวลผลข้อมูลนี้ได้";
-  }
+    try {
+      if (type === "json") setOutput(formatJson(input, mode === "minify", { sortKeys, indent }));
+      else if (type === "yaml") {
+        setPending(true);
+        void convertStructured(input, mode as "json-to-yaml" | "yaml-to-json")
+          .then((value) => { if (live) setOutput(value); })
+          .catch((cause: unknown) => { if (live) setError(errorMessage(cause)); })
+          .finally(() => { if (live) setPending(false); });
+      } else if (type === "base64") {
+        setOutput(mode === "encode" ? base64Encode(input) : base64Decode(input));
+      } else if (type === "url") {
+        if (mode === "encode") setOutput(encodeURIComponent(input));
+        else if (mode === "decode") setOutput(decodeUrlComponent(input));
+        else if (mode === "query") setOutput(parseQuery(input));
+        else if (mode === "build-query") setOutput(buildQuery(input));
+        else {
+          setOutput(JSON.stringify(parseUrlComponents(input), null, 2));
+        }
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+    return () => { live = false; };
+  }, [indent, input, mode, sortKeys, type]);
   const options =
     type === "json"
       ? [
           ["format", "จัดรูปแบบ"],
+          ["validate", "ตรวจ JSON"],
           ["minify", "ย่อ JSON"],
+          ["view", "ดูเป็นต้นไม้"],
         ]
       : type === "yaml"
         ? [
@@ -503,6 +492,8 @@ function ConverterTool({ type }: { type: "json" | "yaml" | "base64" | "url" }) {
               ["encode", "Encode"],
               ["decode", "Decode"],
               ["query", "Query → JSON"],
+              ["build-query", "JSON → Query"],
+              ["parse-url", "แยกส่วน URL"],
             ]
           : [
               ["encode", "Encode"],
@@ -512,30 +503,35 @@ function ConverterTool({ type }: { type: "json" | "yaml" | "base64" | "url" }) {
     <TwoCols>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <h2 className="font-bold">ข้อมูลต้นฉบับ</h2>
+          <h2 className="font-bold">{uiText("ข้อมูลต้นฉบับ")}</h2>
           <Select
             value={mode}
             onChange={(event) => setMode(event.target.value)}
           >
             {options.map(([value, label]) => (
               <option value={value} key={value}>
-                {label}
+              {uiText(label)}
               </option>
             ))}
           </Select>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {type === "json" && mode !== "minify" && <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="size-5 accent-blue-500" checked={sortKeys} onChange={(event) => setSortKeys(event.target.checked)} />{uiText("เรียง key A–Z")}</label>
+            <Field label={uiText("จำนวนช่องว่าง")}><Select value={indent} onChange={(event) => setIndent(Number(event.target.value) as 2 | 4)}><option value={2}>{uiText("2 ช่อง")}</option><option value={4}>{uiText("4 ช่อง")}</option></Select></Field>
+          </div>}
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={
-              type === "yaml" ? '{ "hello": "world" }' : "วางข้อมูลที่นี่…"
+              type === "yaml" ? '{ "hello": "world" }' : uiText("วางข้อมูลที่นี่…")
             }
           />
         </CardContent>
       </Card>
-      <SafeOutput
-        value={output}
+      <div className="grid gap-3">
+        <SafeOutput
+        value={pending ? uiText("กำลังแปลง…") : output}
         error={error}
         filename={
           type === "yaml" && mode === "json-to-yaml"
@@ -544,9 +540,33 @@ function ConverterTool({ type }: { type: "json" | "yaml" | "base64" | "url" }) {
               ? "result.json"
               : undefined
         }
-      />
+        />
+        {type === "json" && mode === "validate" && !error && input.trim() && <p role="status" className="rounded-lg border border-cyan-300/25 bg-cyan-300/5 p-3 text-sm text-cyan-100">{uiText("JSON ถูกต้อง")}</p>}
+        {type === "json" && mode === "view" && !error && input.trim() && <JsonTree input={input} />}
+      </div>
     </TwoCols>
   );
+}
+
+function JsonTree({ input }: { input: string }) {
+  let value: unknown;
+  try { value = JSON.parse(input) as unknown; }
+  catch { return null; }
+  return <Card><CardHeader><h2 className="font-bold">{uiText("โครงสร้าง JSON")}</h2></CardHeader><CardContent><JsonNode name="root" value={value} depth={0} /></CardContent></Card>;
+}
+
+function JsonNode({ name, value, depth }: { name: string; value: unknown; depth: number }) {
+  if (value !== null && typeof value === "object") {
+    const entries: Array<[string, unknown]> = Array.isArray(value)
+      ? value.map((item, index) => [String(index), item])
+      : Object.entries(value as Record<string, unknown>);
+    return <details className="json-node" open={depth < 2}><summary><code>{name}</code><span>{Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}</span></summary><div className="json-children">{entries.map(([key, item]) => <JsonNode key={key} name={key} value={item} depth={depth + 1} />)}</div></details>;
+  }
+  return <p className="json-leaf"><code>{name}</code><span>{JSON.stringify(value)}</span></p>;
+}
+
+function errorMessage(cause: unknown) {
+  return cause instanceof Error ? cause.message : "ไม่สามารถประมวลผลข้อมูลนี้ได้";
 }
 
 function HashTool() {
@@ -555,18 +575,34 @@ function HashTool() {
     "SHA-256",
   );
   const [output, setOutput] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [sourceMode, setSourceMode] = useState<"text" | "file" | "uuid">("text");
+  const [uuidCount, setUuidCount] = useState(1);
+  const [error, setError] = useState("");
+  const { config } = useRuntimeConfig();
   useEffect(() => {
+    if (file || sourceMode !== "text") return;
     let live = true;
-    sha(input, algorithm).then((value) => live && setOutput(value));
+    sha(input, algorithm).then((value) => live && setOutput(value)).catch(() => live && setError("สร้าง Hash ไม่สำเร็จ"));
     return () => {
       live = false;
     };
-  }, [input, algorithm]);
+  }, [input, algorithm, file, sourceMode]);
+  const hashSelectedFile = async () => {
+    if (!file) return;
+    setError("");
+    try {
+      const digest = await crypto.subtle.digest(algorithm, await file.arrayBuffer());
+      setOutput(Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""));
+    } catch {
+      setError("อ่านไฟล์หรือสร้าง Hash ไม่สำเร็จ");
+    }
+  };
   return (
     <TwoCols>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <h2 className="font-bold">ข้อความ</h2>
+          <h2 className="font-bold">{uiText("ข้อความ")}</h2>
           <Select
             value={algorithm}
             onChange={(event) =>
@@ -581,15 +617,31 @@ function HashTool() {
         <CardContent className="space-y-3">
           <Textarea
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => { setInput(event.target.value); setFile(null); setSourceMode("text"); setError(""); }}
           />
-          <Button
-            variant="outline"
-            onClick={() => setOutput(crypto.randomUUID())}
-          >
+          <label className="block text-sm font-medium">
+            <span className="mb-2 block">{uiText("หรือเลือกไฟล์ (สูงสุด ")}{Math.floor(config.maxLocalFileBytes / 1024 / 1024)} MB)</span>
+            <Input type="file" onChange={(event) => {
+              const next = event.target.files?.[0] ?? null;
+              setOutput("");
+              if (next && next.size > config.maxLocalFileBytes) {
+                setFile(null);
+                setError(`ไฟล์มีขนาดเกิน ${Math.floor(config.maxLocalFileBytes / 1024 / 1024)} MB`);
+              } else {
+                setFile(next);
+                setSourceMode(next ? "file" : "text");
+                setError("");
+              }
+              event.currentTarget.value = "";
+            }} />
+          </label>
+          {file && <p className="text-sm text-muted-foreground">{uiText("เลือกแล้ว: ")}{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+          {file && <Button onClick={() => void hashSelectedFile()}>{uiText("สร้าง Hash จากไฟล์")}</Button>}
+          {error && <p role="alert" className="text-sm text-rose-200">{uiText(error)}</p>}
+          <Field label={uiText("จำนวน UUID v4")}><Input type="number" min="1" max="100" value={uuidCount} onChange={(event) => setUuidCount(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} /></Field>
+          <Button variant="outline" onClick={() => { setFile(null); setSourceMode("uuid"); setOutput(Array.from({ length: uuidCount }, () => crypto.randomUUID()).join("\n")); }}>
             <RefreshCw size={16} />
-            สร้าง UUID v4
-          </Button>
+            {uiText("สร้าง UUID v4")}</Button>
         </CardContent>
       </Card>
       <SafeOutput value={output} />
@@ -597,213 +649,53 @@ function HashTool() {
   );
 }
 
-type PdfOperation = "merge" | "split" | "reorder" | "rotate";
-function PdfTool() {
-  const [files, setFiles] = useState<File[]>([]);
-  const [operation, setOperation] = useState<PdfOperation>("merge");
-  const [pages, setPages] = useState("1");
-  const [rotation, setRotation] = useState(90);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { config } = useRuntimeConfig();
-  const run = async () => {
-    setMessage("");
-    setBusy(true);
-    try {
-      if (!files.length)
-        throw new Error("กรุณาเลือกไฟล์ PDF อย่างน้อยหนึ่งไฟล์");
-      const oversized = files.find(
-        (file) => file.size > config.maxLocalFileBytes,
-      );
-      if (oversized)
-        throw new Error(
-          `${oversized.name} มีขนาดเกิน ${(config.maxLocalFileBytes / 1024 / 1024).toFixed(0)} MB`,
-        );
-      const { PDFDocument } = await import("pdf-lib");
-      const first = await PDFDocument.load(await files[0].arrayBuffer());
-      const selection =
-        operation === "merge" || operation === "rotate"
-          ? []
-          : parsePageSelection(pages, first.getPageCount());
-      const payloadFiles = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          bytes: await file.arrayBuffer(),
-        })),
-      );
-      const worker = new Worker(
-        new URL("../workers/pdf.worker.ts", import.meta.url),
-        { type: "module" },
-      );
-      const result = await new Promise<{
-        ok: boolean;
-        bytes?: ArrayBuffer;
-        error?: string;
-      }>((resolve) => {
-        worker.onmessage = (event) => resolve(event.data);
-        worker.onerror = () =>
-          resolve({ ok: false, error: "Web Worker ไม่สามารถเริ่มทำงานได้" });
-        worker.postMessage(
-          { files: payloadFiles, operation, pages: selection, rotation },
-          payloadFiles.map((file) => file.bytes),
-        );
-      });
-      worker.terminate();
-      if (!result.ok || !result.bytes)
-        throw new Error(result.error ?? "ประมวลผล PDF ไม่สำเร็จ");
-      const url = URL.createObjectURL(
-        new Blob([result.bytes], { type: "application/pdf" }),
-      );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `toolsdice-${operation}.pdf`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage("สร้างไฟล์สำเร็จและเริ่มดาวน์โหลดแล้ว");
-    } catch (cause) {
-      setMessage(
-        cause instanceof Error ? cause.message : "ประมวลผล PDF ไม่สำเร็จ",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-      <Card>
-        <CardHeader>
-          <h2 className="font-bold">ไฟล์ PDF</h2>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <input
-            ref={inputRef}
-            className="hidden"
-            type="file"
-            accept="application/pdf"
-            multiple
-            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-          />
-          <button
-            className="flex min-h-44 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background p-6 text-center hover:border-blue-400"
-            onClick={() => inputRef.current?.click()}
-          >
-            <FilePlus2 size={32} className="mb-3 text-blue-500" />
-            <strong>เลือกไฟล์ PDF</strong>
-            <span className="mt-1 text-sm text-muted-foreground">
-              ไฟล์อยู่ใน browser และจะไม่ถูกอัปโหลด
-            </span>
-          </button>
-          <div className="space-y-2">
-            {files.map((file, index) => (
-              <div
-                key={`${file.name}-${index}`}
-                className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm"
-              >
-                <span className="truncate">
-                  {index + 1}. {file.name} ·{" "}
-                  {(file.size / 1024 / 1024).toFixed(1)} MB
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`ลบ ${file.name}`}
-                  onClick={() =>
-                    setFiles((items) =>
-                      items.filter((_, itemIndex) => itemIndex !== index),
-                    )
-                  }
-                >
-                  <Trash2 size={16} />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <h2 className="font-bold">วิธีประมวลผล</h2>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field label="คำสั่ง">
-            <Select
-              className="w-full"
-              value={operation}
-              onChange={(event) =>
-                setOperation(event.target.value as PdfOperation)
-              }
-            >
-              <option value="merge">รวมทุกไฟล์</option>
-              <option value="split">แยกหน้าที่เลือก</option>
-              <option value="reorder">เรียงหน้าตามลำดับ</option>
-              <option value="rotate">หมุนทุกหน้า</option>
-            </Select>
-          </Field>
-          {(operation === "split" || operation === "reorder") && (
-            <Field
-              label={operation === "split" ? "ช่วงหน้า" : "ลำดับหน้า"}
-              hint="เช่น 1-3,5"
-            >
-              <Input
-                value={pages}
-                onChange={(event) => setPages(event.target.value)}
-              />
-            </Field>
-          )}
-          {operation === "rotate" && (
-            <Field label="องศา">
-              <Select
-                className="w-full"
-                value={rotation}
-                onChange={(event) => setRotation(Number(event.target.value))}
-              >
-                <option value={90}>90°</option>
-                <option value={180}>180°</option>
-                <option value={270}>270°</option>
-              </Select>
-            </Field>
-          )}
-          <Button
-            className="w-full"
-            onClick={run}
-            disabled={busy || !files.length}
-          >
-            {busy ? (
-              <LoaderCircle size={17} className="animate-spin" />
-            ) : (
-              <Download size={17} />
-            )}
-            {busy ? "กำลังประมวลผล…" : "สร้างและดาวน์โหลด PDF"}
-          </Button>
-          {message && (
-            <p role="status" className="rounded-lg bg-muted p-3 text-sm">
-              {message}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+function PdfTool({ maxFileBytes }: { maxFileBytes: number }) {
+  return <LazyPanel><LazyPdfWorkspace maxFileBytes={maxFileBytes} /></LazyPanel>;
 }
 
 function TwoCols({ children }: { children: ReactNode }) {
-  return <div className="grid gap-5 lg:grid-cols-2">{children}</div>;
+  return <div className="workspace-two-col">{children}</div>;
+}
+
+function localDateInput(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function localDateTimeInput(date: Date) {
+  return `${localDateInput(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
 export function ToolWorkspace() {
   const { toolSlug } = useParams();
+  const location = useLocation();
   const tool = toolById.get(toolSlug as ToolId);
-  const { favorites, toggleFavorite, markRecent } = usePreferences();
-  useEffect(() => {
-    if (tool) markRecent(tool.id);
-  }, [tool?.id]);
+  const { favorites, toggleFavorite } = usePreferences();
+  const { language, text } = useLanguage();
+  const { config } = useRuntimeConfig();
   if (!tool) return <Navigate to="/" replace />;
+  const requestedBack = (location.state as { from?: unknown } | null)?.from;
+  const backTo = typeof requestedBack === "string" &&
+    (requestedBack === "/" || /^\/categories\/[a-z-]+$/u.test(requestedBack))
+    ? requestedBack
+    : "/";
   const categoryStyle = categoryStyles[tool.category];
   const content: Record<ToolId, ReactNode> = {
+    "text-word-count": <LazyPanel><LazyTextTools toolId="text-word-count" /></LazyPanel>,
+    "text-character-count": <LazyPanel><LazyTextTools toolId="text-character-count" /></LazyPanel>,
     "text-transformer": <TransformTool />,
+    "text-remove-duplicates": <LazyPanel><LazyTextTools toolId="text-remove-duplicates" /></LazyPanel>,
+    "text-sort-lines": <LazyPanel><LazyTextTools toolId="text-sort-lines" /></LazyPanel>,
+    "text-whitespace": <LazyPanel><LazyTextTools toolId="text-whitespace" /></LazyPanel>,
+    "text-find-replace": <LazyPanel><LazyTextTools toolId="text-find-replace" /></LazyPanel>,
     "text-statistics": <StatisticsTool />,
     "text-diff": <DiffTool />,
+    "text-markdown": <LazyPanel><LazyTextTools toolId="text-markdown" /></LazyPanel>,
+    "text-slug": <LazyPanel><LazyTextTools toolId="text-slug" /></LazyPanel>,
+    "text-remove-empty": <LazyPanel><LazyTextTools toolId="text-remove-empty" /></LazyPanel>,
+    "text-reverse": <LazyPanel><LazyTextTools toolId="text-reverse" /></LazyPanel>,
+    "text-keyboard": <LazyPanel><LazyTextTools toolId="text-keyboard" /></LazyPanel>,
+    "text-money": <LazyPanel><LazyTextTools toolId="text-money" /></LazyPanel>,
+    "text-clean": <LazyPanel><LazyTextTools toolId="text-clean" /></LazyPanel>,
     "timestamp-converter": <TimestampTool />,
     "timezone-converter": <TimezoneTool />,
     "date-calculator": <DateCalculatorTool />,
@@ -812,16 +704,54 @@ export function ToolWorkspace() {
     base64: <ConverterTool type="base64" />,
     "url-toolkit": <ConverterTool type="url" />,
     "hash-uuid": <HashTool />,
-    "pdf-workspace": <PdfTool />,
+    "pdf-workspace": <PdfTool maxFileBytes={config.maxLocalFileBytes} />,
+    "image-resize": <LazyPanel><LazyImagePanel toolId="image-resize" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "image-crop": <LazyPanel><LazyImagePanel toolId="image-crop" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "image-compressor": <LazyPanel><LazyImagePanel toolId="image-compressor" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "jpg-to-png": <LazyPanel><LazyImagePanel toolId="jpg-to-png" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "png-to-jpg": <LazyPanel><LazyImagePanel toolId="png-to-jpg" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "image-to-webp": <LazyPanel><LazyImagePanel toolId="image-to-webp" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "webp-to-png": <LazyPanel><LazyImagePanel toolId="webp-to-png" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "remove-image-metadata": <LazyPanel><LazyImagePanel toolId="remove-image-metadata" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "image-to-base64": <LazyPanel><LazyImagePanel toolId="image-to-base64" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "base64-to-image": <LazyPanel><LazyImagePanel toolId="base64-to-image" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "color-picker": <LazyPanel><LazyExtendedPanel tool={toolById.get("color-picker")!} /></LazyPanel>,
+    "favicon-generator": <LazyPanel><LazyImagePanel toolId="favicon-generator" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "jwt-decoder": <LazyPanel><LazyExtendedPanel tool={toolById.get("jwt-decoder")!} /></LazyPanel>,
+    "regex-tester": <LazyPanel><LazyAdditionalPanel toolId="regex-tester" /></LazyPanel>,
+    "cron-helper": <LazyPanel><LazyAdditionalPanel toolId="cron-helper" /></LazyPanel>,
+    "sql-formatter": <LazyPanel><LazyExtendedPanel tool={toolById.get("sql-formatter")!} /></LazyPanel>,
+    "html-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("html-beautifier")!} /></LazyPanel>,
+    "css-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("css-beautifier")!} /></LazyPanel>,
+    "javascript-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("javascript-beautifier")!} /></LazyPanel>,
+    "html-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("html-minifier")!} /></LazyPanel>,
+    "css-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("css-minifier")!} /></LazyPanel>,
+    "javascript-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("javascript-minifier")!} /></LazyPanel>,
+    "csv-json": <LazyPanel><LazyExtendedPanel tool={toolById.get("csv-json")!} /></LazyPanel>,
+    "number-base-converter": <LazyPanel><LazyExtendedPanel tool={toolById.get("number-base-converter")!} /></LazyPanel>,
+    "unit-converter": <LazyPanel><LazyAdditionalPanel toolId="unit-converter" /></LazyPanel>,
+    "csv-workspace": <LazyPanel><LazyDataWorkspace maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    checklist: <LazyPanel><LazyChecklist /></LazyPanel>,
+    "password-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("password-generator")!} /></LazyPanel>,
+    "random-string-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("random-string-generator")!} /></LazyPanel>,
+    "qr-generator": <LazyPanel><LazyAdditionalPanel toolId="qr-generator" /></LazyPanel>,
+    "lorem-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("lorem-generator")!} /></LazyPanel>,
+    "random-number-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("random-number-generator")!} /></LazyPanel>,
+    "thai-year": <LazyPanel><LazyAdditionalPanel toolId="thai-year" /></LazyPanel>,
+    pomodoro: <LazyPanel><LazyAdditionalPanel toolId="pomodoro" /></LazyPanel>,
+    "split-bill": <LazyPanel><LazyAdditionalPanel toolId="split-bill" /></LazyPanel>,
+    "bmi-tdee": <LazyPanel><LazyAdditionalPanel toolId="bmi-tdee" /></LazyPanel>,
   };
   return (
     <div className="mx-auto max-w-7xl">
       <Link
-        to="/"
-        className="mb-3 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground sm:mb-5 sm:text-sm"
+        to={backTo}
+        className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:mb-5 sm:text-sm"
       >
         <ArrowLeft size={16} />
-        กลับหน้ารวมเครื่องมือ
+        {backTo === "/"
+          ? text("กลับไปภาพรวม", "Back to overview")
+          : `${text("กลับไปหมวด", "Back to")} ${categoryName(tool.category, language)}`}
       </Link>
       <header className="mb-5 flex items-start justify-between gap-3 sm:mb-7 sm:gap-4">
         <div className="flex min-w-0 gap-3 sm:gap-4">
@@ -829,11 +759,15 @@ export function ToolWorkspace() {
             <tool.icon size={22} />
           </span>
           <div>
-            <Badge className={categoryStyle.icon}>{tool.category}</Badge>
+            <Badge className={categoryStyle.icon}>
+              {categoryName(tool.category, language)}
+            </Badge>
             <h1 className="mt-2 text-xl font-black sm:text-2xl md:text-3xl">
-              {tool.name}
+              {toolName(tool, language)}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground sm:text-base">{tool.description}</p>
+            <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+              {toolDescription(tool, language)}
+            </p>
           </div>
         </div>
         <Button
@@ -841,22 +775,26 @@ export function ToolWorkspace() {
           size="icon"
           aria-label={
             favorites.includes(tool.id)
-              ? "นำออกจากรายการโปรด"
-              : "เพิ่มในรายการโปรด"
+              ? text("นำออกจากรายการโปรด", "Remove from favorites")
+              : text("เพิ่มในรายการโปรด", "Add to favorites")
           }
+          aria-pressed={favorites.includes(tool.id)}
           onClick={() => toggleFavorite(tool.id)}
         >
           <Heart
             size={18}
             className={
-              favorites.includes(tool.id) ? "fill-blue-400 text-blue-400" : ""
+              favorites.includes(tool.id) ? "fill-amber-500 text-amber-600" : ""
             }
           />
         </Button>
       </header>
-      {content[tool.id]}
+      <section className="local-tool-panel">{content[tool.id]}</section>
       <p className="mt-5 text-center text-xs text-muted-foreground">
-        ข้อมูลในหน้านี้ประมวลผลภายใน browser และไม่ถูกบันทึก
+        {text(
+          "ข้อมูลในหน้านี้ประมวลผลภายในเบราว์เซอร์และไม่ถูกบันทึก",
+          "Your content is processed in this browser and is not stored.",
+        )}
       </p>
     </div>
   );

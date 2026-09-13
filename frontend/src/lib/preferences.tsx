@@ -10,9 +10,7 @@ import type { ToolId } from "./tool-registry";
 
 type Preferences = {
   favorites: ToolId[];
-  recent: ToolId[];
   toggleFavorite: (id: ToolId) => void;
-  markRecent: (id: ToolId) => void;
 };
 
 const PreferenceContext = createContext<Preferences | null>(null);
@@ -28,34 +26,36 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<ToolId[]>(() =>
     read("tfd:favorites", []),
   );
-  const [recent, setRecent] = useState<ToolId[]>(() => read("tfd:recent", []));
 
-  useEffect(() => localStorage.removeItem("tfd:theme"), []);
+  useEffect(() => {
+    try {
+      localStorage.removeItem("tfd:recent");
+    } catch {
+      // Preferences remain available in memory when storage is disabled.
+    }
+  }, []);
   useEffect(
-    () => localStorage.setItem("tfd:favorites", JSON.stringify(favorites)),
+    () => {
+      try {
+        localStorage.setItem("tfd:favorites", JSON.stringify(favorites));
+      } catch {
+        // Favorites remain available in memory when storage is disabled.
+      }
+    },
     [favorites],
-  );
-  useEffect(
-    () => localStorage.setItem("tfd:recent", JSON.stringify(recent)),
-    [recent],
   );
 
   const value = useMemo<Preferences>(
     () => ({
       favorites,
-      recent,
       toggleFavorite: (id) =>
         setFavorites((items) =>
           items.includes(id)
             ? items.filter((item) => item !== id)
             : [...items, id],
         ),
-      markRecent: (id) =>
-        setRecent((items) =>
-          [id, ...items.filter((item) => item !== id)].slice(0, 6),
-        ),
     }),
-    [favorites, recent],
+    [favorites],
   );
   return (
     <PreferenceContext.Provider value={value}>
