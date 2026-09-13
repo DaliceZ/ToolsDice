@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   ArrowUpRight,
   BriefcaseBusiness,
@@ -11,9 +19,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { ChoiceMenu, type Choice } from "@/components/ChoiceMenu";
 import { useRuntimeConfig } from "@/lib/api";
 import { useLanguage } from "@/lib/language";
 import { themes, useTheme, type ThemeId } from "@/lib/theme";
@@ -21,118 +29,6 @@ import { categoryName, categorySlugs, toolDescription, toolName } from "@/lib/to
 import { categories, tools, type ToolCategory } from "@/lib/tool-registry";
 import { categoryStyles } from "@/lib/category-styles";
 import { cn } from "@/lib/utils";
-
-type Choice = {
-  value: string;
-  label: string;
-  compact: string;
-  detail?: string;
-  colors?: string[];
-};
-
-function ChoiceMenu({
-  label,
-  value,
-  icon: Icon,
-  choices,
-  onSelect,
-}: {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  choices: Choice[];
-  onSelect: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const current = choices.find((choice) => choice.value === value) ?? choices[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        const activeIndex = optionRefs.current.findIndex((item) => item === document.activeElement);
-        const start = activeIndex < 0 ? (event.key === "ArrowDown" ? -1 : 0) : activeIndex;
-        const next = (start + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length;
-        event.preventDefault();
-        optionRefs.current[next]?.focus();
-      } else if (event.key === "Home" || event.key === "End") {
-        event.preventDefault();
-        optionRefs.current[event.key === "Home" ? 0 : choices.length - 1]?.focus();
-      } else if (event.key === "Tab") {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [choices.length, open]);
-
-  const showMenu = () => {
-    setOpen(true);
-    window.setTimeout(() => optionRefs.current[0]?.focus(), 0);
-  };
-
-  return (
-    <div className="choice-menu" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="choice-menu-trigger"
-        aria-label={`${label}: ${current.label}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title={`${label}: ${current.label}`}
-        onClick={() => open ? setOpen(false) : showMenu()}
-      >
-        <Icon aria-hidden="true" size={17} />
-        <span className="choice-menu-current">{current.compact}</span>
-        <ChevronDown aria-hidden="true" className="choice-menu-chevron" size={14} />
-      </button>
-      {open && (
-        <div className="choice-menu-popover" role="menu" aria-label={label}>
-          {choices.map((choice, index) => (
-            <button
-              ref={(element) => { optionRefs.current[index] = element; }}
-              type="button"
-              role="menuitemradio"
-              aria-checked={choice.value === value}
-              className="choice-menu-option"
-              key={choice.value}
-              onClick={() => {
-                onSelect(choice.value);
-                setOpen(false);
-                triggerRef.current?.focus();
-              }}
-            >
-              {choice.colors && (
-                <span className="choice-menu-swatches" aria-hidden="true">
-                  {choice.colors.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
-                </span>
-              )}
-              <span className="choice-menu-option-copy">
-                <span>{choice.label}</span>
-                {choice.detail && <small>{choice.detail}</small>}
-              </span>
-              {choice.value === value && <span className="choice-menu-check" aria-hidden="true">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function LanguageMenu({
   language,
@@ -143,8 +39,8 @@ function LanguageMenu({
 }) {
   const { text } = useLanguage();
   const choices: Choice[] = [
-    { value: "en", label: "English", compact: "EN", detail: "Poppins" },
     { value: "th", label: "ไทย", compact: "ไทย", detail: "Sarabun" },
+    { value: "en", label: "English", compact: "EN", detail: "Poppins" },
   ];
   return (
     <ChoiceMenu
@@ -215,6 +111,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     [sidebarCollapsed],
   );
 
+  useLayoutEffect(() => {
+    if (location.pathname.startsWith("/categories/")) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [location.key, location.pathname]);
+
   useEffect(() => {
     if (activeCategory) {
       setExpandedCategories((current) => new Set(current).add(activeCategory));
@@ -268,22 +170,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <header className="app-topbar glass-shell sticky top-0 z-50 flex h-[76px] items-center justify-between gap-2 border-b border-border/80 px-3 sm:gap-3 sm:px-6 lg:h-[84px]">
         <div className="flex min-w-0 items-center gap-3">
-          <Link
-            to="/"
-            className="flex min-w-0 items-center gap-2.5 rounded-xl text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label="ToolsDice"
-          >
-            <span className="brand-die grid size-10 shrink-0 place-items-center rounded-2xl">
-              <img
-                className="brand-mark"
-                src="https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/logo2.png"
-                alt=""
-                width="30"
-                height="30"
-              />
-            </span>
-            <span className="brand-name text-[30px] leading-none font-bold tracking-tight">ToolsDice</span>
-          </Link>
           <button
             ref={menuButtonRef}
             type="button"
@@ -308,6 +194,22 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
           </button>
+          <Link
+            to="/"
+            className="flex min-w-0 items-center gap-2.5 rounded-xl text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="ToolsDice"
+          >
+            <span className="brand-die grid size-10 shrink-0 place-items-center rounded-2xl">
+              <img
+                className="brand-mark"
+                src="https://yqkdvluuiuxbnekwrcou.supabase.co/storage/v1/object/public/pics/icon/logo2.png"
+                alt=""
+                width="30"
+                height="30"
+              />
+            </span>
+            <span className="brand-name text-[30px] leading-none font-bold tracking-tight">ToolsDice</span>
+          </Link>
         </div>
 
         <div
@@ -324,7 +226,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             rel="noreferrer"
           >
             <BriefcaseBusiness aria-hidden="true" size={17} />
-            <span>Portfolio</span>
+            <span>Me</span>
             <ArrowUpRight aria-hidden="true" className="portfolio-arrow" size={14} />
           </a>
         </div>
@@ -341,7 +243,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside
         id="tools-sidebar"
         className={cn(
-          "sidebar-scroll glass-shell fixed bottom-0 left-0 top-[76px] z-40 flex w-[min(21rem,88vw)] flex-col border-r border-border/80 transition-[width,transform] duration-300 ease-out lg:top-[84px] lg:w-[var(--sidebar-width)] lg:translate-x-0",
+          "sidebar-scroll glass-shell fixed bottom-0 left-0 top-[76px] z-40 flex w-[min(21rem,65vw)] flex-col border-r border-border/80 transition-[width,transform] duration-300 ease-out lg:top-[84px] lg:w-[var(--sidebar-width)] lg:translate-x-0",
           mobileOpen
             ? "visible translate-x-0 shadow-[18px_0_48px_rgba(76,54,38,0.12)]"
             : "invisible -translate-x-full lg:visible lg:shadow-none",
@@ -446,10 +348,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </div>
         </nav>
-
-        <div className={cn("shrink-0 border-t border-border/70 px-4 py-4 text-xs leading-5 text-muted-foreground", sidebarCollapsed && "lg:hidden")}>
-          {text("ข้อความและไฟล์ทำงานในเบราว์เซอร์", "Text and files stay in your browser")}
-        </div>
       </aside>
 
       <main

@@ -1,5 +1,194 @@
-import { expect, test } from "@playwright/test";
-import { PDFDocument } from "pdf-lib";
+import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("tfd:language", "en");
+    localStorage.setItem("tfd:language-selected", "true");
+  });
+});
+
+async function goToPdfTool(page: Page, mode: string) {
+  const routeId = mode === "merge-pdf" ? "pdf-workspace" : mode;
+  await page.goto("/tools/" + routeId);
+}
+
+test("PDF tasks open directly without a task selector", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tools/manage-pdf-pages");
+  await expect(page.getByRole("heading", { level: 1, name: "Manage PDF Pages" })).toBeVisible();
+  await expect(page.locator(".pdf-mode-picker")).toHaveCount(0);
+});
+
+test("PDF tools appear as individual entries in the category and sidebar", async ({ page }) => {
+  await page.goto("/categories/pdf");
+  const expected = [
+    "pdf-workspace",
+    "pdf-text",
+    "manage-pdf-pages",
+    "split-pdf",
+    "pdf-metadata",
+    "compress-pdf",
+    "page-number-pdf",
+    "add-watermark",
+    "images-to-pdf",
+    "pdf-to-images",
+  ];
+  const cards = page.locator(".category-page .tool-card");
+  await expect(cards).toHaveCount(expected.length);
+  const categoryRoutes = await cards.evaluateAll((items) =>
+    items.map((item) => item.querySelector<HTMLAnchorElement>("a[href]")?.getAttribute("href")?.replace("/tools/", "")),
+  );
+  expect(categoryRoutes).toEqual(expected);
+  for (const routeId of expected) {
+    await expect(page.locator(`#tools-sidebar a[href='/tools/${routeId}']`)).toHaveCount(1);
+  }
+});
+
+test("PDF text extraction reads every page when the page range is left blank", async ({ page }) => {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  for (const text of ["first-page-unique", "second-page-unique"]) {
+    const pdfPage = pdf.addPage([240, 320]);
+    pdfPage.drawText(text, { x: 24, y: 280, font, size: 12 });
+  }
+
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "pdf-text");
+  const pageRange = page.getByLabel("Pages to read");
+  await expect(pageRange).toHaveValue("");
+  await expect(pageRange).toHaveAttribute(
+    "placeholder",
+    "Leave blank to read all pages, e.g. 1-3,5",
+  );
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "text-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await pdf.save()),
+  });
+
+  await page.getByRole("button", { name: "Extract text", exact: true }).click();
+  const output = page.locator(".output-editor textarea");
+  await expect(output).toHaveValue(/first-page-unique[\s\S]*second-page-unique/);
+});
+
+test("PDF merge appends files chosen in separate selections", async ({ page }) => {
+  const firstPdf = await PDFDocument.create();
+  firstPdf.addPage([240, 320]);
+  const secondPdf = await PDFDocument.create();
+  secondPdf.addPage([320, 240]);
+
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "merge-pdf");
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles({
+    name: "first.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await firstPdf.save()),
+  });
+  await expect(page.locator(".sortable-file-list .sortable-item")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Add PDFs" })).toBeVisible();
+
+  await fileInput.setInputFiles({
+    name: "second.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await secondPdf.save()),
+  });
+  const selectedFiles = page.locator(".sortable-file-list .sortable-item");
+  await expect(selectedFiles).toHaveCount(2);
+  await expect(selectedFiles.nth(0)).toContainText("first.pdf");
+  await expect(selectedFiles.nth(1)).toContainText("second.pdf");
+
+  await page.getByRole("button", { name: "Remove file: first.pdf" }).click();
+  await expect(selectedFiles).toHaveCount(1);
+  await expect(selectedFiles.first()).toContainText("second.pdf");
+});
+
+test("PDF merge can reorder pages across source files", async ({ page }) => {
+  const firstPdf = await PDFDocument.create();
+  firstPdf.addPage([240, 320]);
+  firstPdf.addPage([180, 280]);
+  const secondPdf = await PDFDocument.create();
+  secondPdf.addPage([320, 240]);
+
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "merge-pdf");
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles({
+    name: "first-layout.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await firstPdf.save()),
+  });
+  await fileInput.setInputFiles({
+    name: "second-layout.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await secondPdf.save()),
+  });
+  await page.getByRole("checkbox", { name: "Arrange pages before merging" }).check();
+
+  const cards = page.locator(".merge-page-tile");
+  await expect(cards).toHaveCount(3, { timeout: 15_000 });
+  await expect(cards.nth(0)).toContainText("first-layout.pdf");
+  await expect(cards.nth(2)).toContainText("second-layout.pdf");
+  if ((page.viewportSize()?.width ?? 1280) < 600) {
+    await cards.nth(2).getByRole("button", { name: /Move up/ }).click();
+    await cards.nth(1).getByRole("button", { name: /Move up/ }).click();
+  } else {
+    await cards.nth(2).dragTo(cards.nth(0), {
+      sourcePosition: { x: 45, y: 55 },
+      targetPosition: { x: 45, y: 55 },
+    });
+  }
+  await expect(cards.first()).toContainText("second-layout.pdf");
+  await cards.first().getByRole("button", { name: /Move down/ }).click();
+  await cards.nth(1).getByRole("button", { name: /Move up/ }).click();
+  await expect(cards.first()).toContainText("second-layout.pdf");
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Merge and download PDF" }).click();
+  const download = await downloadPromise;
+  const outputPath = await download.path();
+  expect(outputPath).toBeTruthy();
+  const mergedPdf = await PDFDocument.load(await readFile(outputPath!));
+  expect(mergedPdf.getPages().map((pdfPage) => pdfPage.getSize())).toEqual([
+    { width: 320, height: 240 },
+    { width: 240, height: 320 },
+    { width: 180, height: 280 },
+  ]);
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(320);
+});
+
+test("Thai is the default until a visitor chooses another language", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("lang", "th");
+    await expect(page.getByRole("button", { name: "เปลี่ยนภาษา: ไทย" })).toBeVisible();
+
+    await page.getByRole("button", { name: "เปลี่ยนภาษา: ไทย" }).click();
+    await page.getByRole("menuitemradio", { name: "English" }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  } finally {
+    await context.close();
+  }
+
+  const legacyContext = await browser.newContext();
+  await legacyContext.addInitScript(() => localStorage.setItem("tfd:language", "en"));
+  const legacyPage = await legacyContext.newPage();
+  try {
+    await legacyPage.goto("/");
+    await expect(legacyPage.locator("html")).toHaveAttribute("lang", "th");
+  } finally {
+    await legacyContext.close();
+  }
+});
 
 test("overview, category navigation, autocomplete, and local tools work in English", async ({ page }) => {
   const configResponsePromise = page.waitForResponse(/\/api\/v1\/config$/);
@@ -17,7 +206,7 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
   await expect(page.locator(".category-overview-grid a[href^='/categories/']")).toHaveCount(9);
   await expect(page.getByText("All tools", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Recently used")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Portfolio" })).toBeVisible();
+  await expect(page.locator(".app-topbar .portfolio-link")).toBeVisible();
   await expect(page.locator(".topbar-actions > .portfolio-link")).toHaveCount(1);
   await expect(page.locator(".app-topbar .portfolio-link")).toHaveCSS("cursor", "pointer");
 
@@ -57,7 +246,8 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
     await expect(collapseSidebar).toBeVisible();
     const sidebarRight = await sidebar.evaluate((element) => element.getBoundingClientRect().right);
     const toggleRight = await collapseSidebar.evaluate((element) => element.getBoundingClientRect().right);
-    expect(Math.abs(toggleRight - sidebarRight)).toBeLessThan(1);
+    const brandLeft = await page.locator(".app-topbar .brand-die").evaluate((element) => element.getBoundingClientRect().left);
+    expect(toggleRight).toBeLessThan(brandLeft);
     await collapseSidebar.click();
     const expandSidebar = page.getByRole("banner").getByRole("button", { name: "Expand sidebar" });
     await expect(expandSidebar).toBeVisible();
@@ -65,7 +255,9 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
       return await sidebar.evaluate((element) => element.getBoundingClientRect().right);
     }).toBeLessThan(sidebarRight - 100);
     const stationaryButtonRight = await expandSidebar.evaluate((element) => element.getBoundingClientRect().right);
-    expect(Math.abs(stationaryButtonRight - sidebarRight)).toBeLessThan(1);
+    const stationaryBrandLeft = await page.locator(".app-topbar .brand-die").evaluate((element) => element.getBoundingClientRect().left);
+    expect(Math.abs(stationaryButtonRight - toggleRight)).toBeLessThan(1);
+    expect(stationaryButtonRight).toBeLessThan(stationaryBrandLeft);
     await expandSidebar.click();
 
     const textCategory = sidebar.getByRole("button", { name: /^Text\s+\d+$/ });
@@ -82,8 +274,22 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
     await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
   }
 
+  const overviewCanScroll = await page.evaluate(() => {
+    const scroller = document.scrollingElement;
+    return Boolean(scroller && scroller.scrollHeight > window.innerHeight);
+  });
+  if (overviewCanScroll) {
+    await page.evaluate(() =>
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: "instant",
+      }),
+    );
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  }
   await page.locator(".category-overview-grid a[href='/categories/text']").click();
   await expect(page).toHaveURL(/\/categories\/text$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByRole("heading", { name: "Text", exact: true })).toBeVisible();
   await expect.poll(() => page.locator(".category-page").evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).paddingInlineStart),
@@ -130,6 +336,24 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
   await expect(page.getByRole("status").filter({ hasText: "Valid JSON" })).toBeVisible();
 });
 
+test("mobile category cards keep space between icons and labels, with the menu before the brand", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/categories/text");
+
+  const firstCard = page.locator(".tool-card").first();
+  const iconToLabelGap = await firstCard.evaluate((element) => {
+    const icon = element.querySelector<HTMLElement>(".size-10");
+    const label = element.querySelector<HTMLElement>("h2");
+    if (!icon || !label) return Number.NEGATIVE_INFINITY;
+    return label.getBoundingClientRect().left - icon.getBoundingClientRect().right;
+  });
+  expect(iconToLabelGap).toBeGreaterThanOrEqual(10);
+
+  const menuRight = await page.getByRole("button", { name: "Open menu" }).evaluate((element) => element.getBoundingClientRect().right);
+  const brandLeft = await page.locator(".app-topbar .brand-die").evaluate((element) => element.getBoundingClientRect().left);
+  expect(menuRight).toBeLessThan(brandLeft);
+});
+
 test("favorites, themes, and language menus keep all preferences local", async ({ page }) => {
   await page.goto("/categories/developer");
   await page.getByRole("button", { name: "Add to favorites: JSON Toolkit" }).click();
@@ -139,7 +363,9 @@ test("favorites, themes, and language menus keep all preferences local", async (
 
   const language = page.getByRole("button", { name: "Language: English" });
   await language.click();
-  await page.getByRole("menuitemradio", { name: /ไทย/ }).click();
+  await expect(page.getByRole("menuitemradio").nth(0)).toHaveAccessibleName("ไทย");
+  await expect(page.getByRole("menuitemradio").nth(1)).toHaveAccessibleName("English");
+  await page.getByRole("menuitemradio").nth(0).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "th");
   await expect.poll(() => page.locator("body").evaluate((element) => getComputedStyle(element).fontFamily)).toContain("Sarabun");
   await expect(page.getByRole("heading", { name: /สำรวจ 9 หมวดหมู่/ })).toBeVisible();
@@ -148,11 +374,29 @@ test("favorites, themes, and language menus keep all preferences local", async (
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect.poll(() => page.locator("body").evaluate((element) => getComputedStyle(element).fontFamily)).toContain("Poppins");
 
+  const classicOrbitColor = await page.locator(".orbit-track-one").evaluate((element) => getComputedStyle(element).borderTopColor);
+  const classicOrbitAlpha = classicOrbitColor.match(/\/\s*([\d.]+)\s*\)$/)?.[1] ?? classicOrbitColor.match(/,\s*([\d.]+)\s*\)$/)?.[1];
+  expect(Number(classicOrbitAlpha)).toBeCloseTo(0.42);
+
+  await language.click();
+  const themeButton = page.getByRole("button", { name: /^Theme:/ });
+  await themeButton.click();
+  await expect(language).toHaveAttribute("aria-expanded", "false");
+  await expect(themeButton).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".choice-menu-popover")).toHaveCount(1);
+  await page.getByRole("menuitemradio", { name: /^Dark/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
   const palettes = new Set<string>([
     await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--background").trim()),
   ]);
+  const primaryOrbitAlpha = async () => {
+    const color = await page.locator(".orbit-track-one").evaluate((element) => getComputedStyle(element).borderTopColor);
+    const alpha = color.match(/\/\s*([\d.]+)\s*\)$/)?.[1] ?? color.match(/,\s*([\d.]+)\)$/)?.[1];
+    return Number(alpha);
+  };
+  expect(await primaryOrbitAlpha()).toBeCloseTo(0.2);
   const themeChoices = [
-    ["Dark", "dark"],
     ["Exclusive", "exclusive"],
     ["Matcha", "matcha"],
     ["Volcano", "volcano"],
@@ -163,6 +407,7 @@ test("favorites, themes, and language menus keep all preferences local", async (
     await page.getByRole("menuitemradio", { name: new RegExp(`^${label}`) }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", id);
     palettes.add(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--background").trim()));
+    if (id === "matcha") expect(await primaryOrbitAlpha()).toBeCloseTo(0.46);
   }
   expect(palettes.size).toBe(5);
   await expect(page.locator(".choice-menu-popover")).toHaveCount(0);
@@ -185,7 +430,7 @@ test("Checklist stays in memory, stays English, and exports only on request", as
   expect(
     storageValues.every(
       ([key, value]) =>
-        ["tfd:favorites", "tfd:language", "tfd:theme"].includes(key as string) &&
+        ["tfd:favorites", "tfd:language", "tfd:language-selected", "tfd:theme"].includes(key as string) &&
         !String(value).includes("Homework"),
     ),
   ).toBe(true);
@@ -205,7 +450,7 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   const pdfBuffer = Buffer.from(await pdf.save());
 
   await page.goto("/tools/pdf-workspace");
-  await page.locator(".pdf-mode-picker select").selectOption("split-pdf");
+  await goToPdfTool(page, "split-pdf");
   await page.locator('input[type="file"]').setInputFiles({
     name: "two-pages.pdf",
     mimeType: "application/pdf",
@@ -213,9 +458,32 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   });
   await expect(page.locator(".pdf-preview-pages figure")).toHaveCount(2);
   await expect(page.locator(".pdf-preview-pages img").nth(1)).toHaveAttribute("alt", "PDF page 2");
+  const quickSplitDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download result" }).click();
+  expect((await quickSplitDownload).suggestedFilename()).toBe("split-two-pages.pdf");
+  await page.getByRole("button", { name: "Enlarge PDF page preview 2" }).click();
+  const pdfViewer = page.getByRole("dialog");
+  await expect(pdfViewer).toBeVisible();
+  await expect(pdfViewer.getByRole("img", { name: "PDF page 2" })).toBeVisible();
+  await pdfViewer.getByRole("button", { name: "Close preview" }).click();
+  await expect(pdfViewer).toHaveCount(0);
+
+  const pageRanges = page.locator(".page-range-row");
+  await expect(pageRanges).toHaveCount(1);
+  await page.getByRole("button", { name: "Add range" }).click();
+  await expect(pageRanges).toHaveCount(2);
+  await pageRanges.nth(0).locator('input[type="number"]').nth(1).fill("2");
+  await pageRanges.nth(1).locator('input[type="number"]').first().fill("2");
+  await pageRanges.nth(1).locator('input[type="number"]').nth(1).fill("2");
+  await page.getByRole("button", { name: "Split and download" }).click();
+  await expect(page.locator(".inline-status.error")).toContainText("Page ranges overlap");
+  await page.getByRole("button", { name: "Remove range 2" }).click();
+  await expect(pageRanges).toHaveCount(1);
+  await page.getByRole("button", { name: "Remove file: two-pages.pdf" }).click();
+  await expect(page.locator(".pdf-preview-card")).toHaveCount(0);
 
   await page.goto("/tools/pdf-workspace");
-  await page.locator(".pdf-mode-picker select").selectOption("reorder-pdf-pages");
+  await goToPdfTool(page, "manage-pdf-pages");
   await page.locator('input[type="file"]').setInputFiles({
     name: "two-pages.pdf",
     mimeType: "application/pdf",
@@ -223,7 +491,22 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   });
   const pageTiles = page.locator(".page-organizer .page-tile");
   await expect(pageTiles).toHaveCount(2);
-  await pageTiles.nth(0).dragTo(pageTiles.nth(1), { targetPosition: { x: 40, y: 40 } });
+  const pageControls = pageTiles.first().locator(".page-control-toolbar");
+  const iconActions = pageControls.locator("button");
+  await expect(iconActions).toHaveCount(5);
+  await expect(pageControls.locator("button span")).toHaveCount(0);
+  const actionRows = await iconActions.evaluateAll((buttons) =>
+    buttons.map((button) => Math.round(button.getBoundingClientRect().top)),
+  );
+  expect(new Set(actionRows).size).toBe(1);
+  await page.getByRole("button", { name: "Enlarge PDF page preview 1" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close preview" }).click();
+  if ((page.viewportSize()?.width ?? 1280) < 600) {
+    await pageTiles.nth(1).getByRole("button", { name: "Move up" }).click();
+  } else {
+    await pageTiles.nth(0).dragTo(pageTiles.nth(1), { targetPosition: { x: 40, y: 40 } });
+  }
   await expect(pageTiles.first().locator(".page-thumb img")).toHaveAttribute("alt", "PDF page 2");
 
   const pngDataUrl = await page.evaluate(() => {
@@ -238,6 +521,47 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   });
   const pngBuffer = Buffer.from(pngDataUrl.split(",")[1], "base64");
 
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "images-to-pdf");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "sample.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  });
+  await expect(page.locator(".image-to-pdf-preview-card img")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Manage images" })).toBeVisible();
+  const quickPdfDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download result" }).click();
+  expect((await quickPdfDownload).suggestedFilename()).toBe("images-to-pdf.pdf");
+
+  const fourPagePdf = await PDFDocument.create();
+  for (let index = 0; index < 4; index += 1) fourPagePdf.addPage([240, 320]);
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "page-number-pdf");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "four-pages.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await fourPagePdf.save()),
+  });
+  await expect(page.locator(".pdf-adjustment-preview-page")).toHaveCount(1);
+  await expect(page.locator(".pdf-preview-card")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add numbering range" }).click();
+  const numberingRules = page.locator(".numbering-rule");
+  await expect(numberingRules).toHaveCount(2);
+  await expect(numberingRules.nth(0).locator('input[type="number"]').nth(1)).toHaveValue("3");
+  await expect(numberingRules.nth(1).locator('input[type="number"]').first()).toHaveValue("4");
+  await numberingRules.nth(0).getByRole("button", { name: /Numbering style:/ }).click();
+  await page.locator('[data-choice-value="thai"]').click();
+  await numberingRules.nth(1).getByRole("button", { name: /Numbering style:/ }).click();
+  await page.locator('[data-choice-value="numeric"]').click();
+  await expect(page.locator(".numbering-preview")).toContainText("ก");
+  const quickNumberedDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download result" }).click();
+  expect((await quickNumberedDownload).suggestedFilename()).toBe("numbered-four-pages.pdf");
+  const numberedDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Add page numbers and download" }).click();
+  expect((await numberedDownload).suggestedFilename()).toBe("numbered-four-pages.pdf");
+
   await page.goto("/tools/image-resize");
   await page.locator('input[type="file"]').setInputFiles({
     name: "sample.png",
@@ -248,6 +572,9 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   const resize = page.getByRole("slider", { name: "Resize image" });
   await resize.press("End");
   await expect(page.locator(".image-result figcaption")).toContainText("128 × 96 px");
+  const quickImageDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download result" }).click();
+  expect((await quickImageDownload).suggestedFilename()).toMatch(/\.png$/);
 
   await page.goto("/tools/image-crop");
   await page.locator('input[type="file"]').setInputFiles({
@@ -289,6 +616,135 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });
 
+test("hidden PDF previews resume and workspace controls remain interactive", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "setDocumentHidden", {
+      value: (hidden: boolean) => {
+        Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+        document.dispatchEvent(new Event("visibilitychange"));
+      },
+    });
+  });
+  const pdf = await PDFDocument.create();
+  pdf.addPage([240, 320]);
+  pdf.addPage([240, 320]);
+  const pdfBuffer = Buffer.from(await pdf.save());
+
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "split-pdf");
+  await page.locator('input[type="file"]').setInputFiles({ name: "tab-switch.pdf", mimeType: "application/pdf", buffer: pdfBuffer });
+  await expect(page.locator(".pdf-preview-page-button")).toHaveCount(2);
+
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(true));
+  await expect(page.locator(".pdf-preview-card .helper-text")).toContainText("The preview will resume when you return to this tab.");
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(false));
+  await expect(page.locator(".pdf-preview-page-button")).toHaveCount(2);
+  await page.getByRole("button", { name: "Enlarge PDF page preview 1" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(true));
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as { setDocumentHidden: (hidden: boolean) => void }).setDocumentHidden(false));
+
+  await goToPdfTool(page, "manage-pdf-pages");
+  await page.locator('input[type="file"]').setInputFiles({ name: "tab-switch.pdf", mimeType: "application/pdf", buffer: pdfBuffer });
+  const tiles = page.locator(".page-organizer .page-tile");
+  await expect(tiles).toHaveCount(2);
+  await page.getByRole("button", { name: "Rotate right" }).first().click();
+  await expect(tiles.first()).toBeVisible();
+});
+
+test("watermark and page-number previews show one live PDF page", async ({ page }) => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage([240, 320]);
+  pdf.addPage([240, 320]);
+  const pdfBuffer = Buffer.from(await pdf.save());
+
+  await page.goto("/tools/pdf-workspace");
+  await goToPdfTool(page, "add-watermark");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "watermark-preview.pdf",
+    mimeType: "application/pdf",
+    buffer: pdfBuffer,
+  });
+  await expect(page.locator(".pdf-adjustment-preview-page")).toHaveCount(1);
+  await expect(page.locator(".pdf-preview-card")).toHaveCount(0);
+  const watermark = page.locator(".pdf-watermark-stamp");
+  await expect(watermark).toHaveAttribute("alt", "CONFIDENTIAL");
+  const placement = page.getByRole("group", { name: "Watermark placement" });
+  const initialLeft = await watermark.evaluate((image) => image.style.left);
+  await placement.press("ArrowRight");
+  await expect.poll(() => watermark.evaluate((image) => image.style.left)).not.toBe(initialLeft);
+  await placement.scrollIntoViewIfNeeded();
+  const frameBox = await placement.boundingBox();
+  expect(frameBox).not.toBeNull();
+  const beforeDragLeft = await watermark.evaluate((image) => image.style.left);
+  await page.mouse.move(frameBox!.x + frameBox!.width * 0.15, frameBox!.y + frameBox!.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(frameBox!.x + frameBox!.width * 0.75, frameBox!.y + frameBox!.height * 0.72);
+  await page.mouse.up();
+  await expect.poll(() => watermark.evaluate((image) => image.style.left)).not.toBe(beforeDragLeft);
+  await page.getByLabel("Watermark text").fill("APPROVED");
+  await expect(watermark).toHaveAttribute("alt", "APPROVED");
+  const watermarkedDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download result" }).click();
+  expect((await watermarkedDownload).suggestedFilename()).toBe("watermarked-watermark-preview.pdf");
+
+  await goToPdfTool(page, "page-number-pdf");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "number-preview.pdf",
+    mimeType: "application/pdf",
+    buffer: pdfBuffer,
+  });
+  await expect(page.locator(".pdf-adjustment-preview-page")).toHaveCount(1);
+  await expect(page.locator(".pdf-preview-card")).toHaveCount(0);
+  const previewPage = page.getByLabel("Preview page");
+  await previewPage.fill("2");
+  await expect(page.locator(".pdf-adjustment-page-image")).toHaveAttribute("alt", "PDF page 2");
+  await page.getByRole("button", { name: /Numbering style:/ }).click();
+  await page.locator('[data-choice-value="upper"]').click();
+  await page.getByLabel("Starting value").fill("3");
+  const pageNumberStamp = page.locator(".pdf-adjustment-stamp");
+  await expect(pageNumberStamp).toHaveAttribute("alt", "D");
+  const initialTop = await pageNumberStamp.evaluate((image) => image.style.top);
+  await page.getByRole("button", { name: /Position:/ }).click();
+  await page.locator('[data-choice-value="top-right"]').click();
+  await expect.poll(() => pageNumberStamp.evaluate((image) => image.style.top)).not.toBe(initialTop);
+});
+
+test("copy only runs from the copy button, never from the output header", async ({ page }) => {
+  await page.addInitScript(() => {
+    let writes = 0;
+    Object.defineProperty(window, "getCopyWriteCount", { value: () => writes });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => { writes += 1; } },
+    });
+  });
+  const count = () => page.evaluate(() => (window as unknown as { getCopyWriteCount: () => number }).getCopyWriteCount());
+  await page.goto("/tools/sql-formatter");
+  const output = page.locator(".output-editor").first();
+  await expect(output).toBeVisible();
+  const heading = output.locator(".editor-heading");
+  const box = await heading.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + Math.min(box!.width * .55, box!.width - 80), box!.y + box!.height / 2);
+  await expect.poll(count).toBe(0);
+  await output.getByRole("button", { name: "Copy" }).click();
+  await expect.poll(count).toBe(1);
+
+  await page.goto("/tools/csv-workspace");
+  await page.locator(".data-mode-picker select").selectOption("table-to-json");
+  const dataOutput = page.locator(".output-editor");
+  await expect(dataOutput).toBeVisible();
+  const dataHeading = dataOutput.locator(".editor-heading");
+  const dataBox = await dataHeading.boundingBox();
+  expect(dataBox).not.toBeNull();
+  await page.mouse.click(dataBox!.x + Math.min(dataBox!.width * .55, dataBox!.width - 80), dataBox!.y + dataBox!.height / 2);
+  await expect.poll(count).toBe(0);
+  await dataOutput.getByRole("button", { name: "Copy" }).click();
+  await expect.poll(count).toBe(1);
+});
+
 test("mobile drawer, custom menus, keyboard access, reduced motion, and narrow layouts work", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -297,17 +753,27 @@ test("mobile drawer, custom menus, keyboard access, reduced motion, and narrow l
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "ToolsDice" })).toBeFocused();
-  await page.keyboard.press("Tab");
   const menu = page.getByRole("button", { name: "Open menu" });
   await expect(menu).toBeFocused();
-  const brandRight = await page.locator(".brand-name").evaluate((element) => element.getBoundingClientRect().right);
-  const menuLeft = await menu.evaluate((element) => element.getBoundingClientRect().left);
-  expect(menuLeft).toBeGreaterThan(brandRight);
+  const brand = page.getByRole("link", { name: "ToolsDice" });
+  const brandLeft = await page.locator(".brand-die").evaluate((element) => element.getBoundingClientRect().left);
+  const menuRight = await menu.evaluate((element) => element.getBoundingClientRect().right);
+  expect(menuRight).toBeLessThan(brandLeft);
+  await page.keyboard.press("Tab");
+  await expect(brand).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(menu).toBeFocused();
   await page.keyboard.press("Enter");
   const closeMenu = page.getByRole("banner").getByRole("button", { name: "Close menu" });
   await expect(closeMenu).toHaveAttribute("aria-expanded", "true");
   await expect(closeMenu).toBeFocused();
+  const sidebar = page.getByRole("complementary", { name: "Tools navigation" });
+  const sidebarWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
+  const viewportWidth = await page.evaluate(() => window.innerWidth);
+  expect(sidebarWidth).toBeGreaterThanOrEqual(viewportWidth * 0.64);
+  expect(sidebarWidth).toBeLessThanOrEqual(viewportWidth * 0.66);
+  await page.keyboard.press("Tab");
+  await expect(brand).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("complementary", { name: "Tools navigation" }).getByRole("link", { name: "Overview" })).toBeFocused();
   await page.keyboard.press("Escape");
@@ -341,7 +807,7 @@ test("all enabled tool routes use English UI and reflow at 320px", async ({ page
   const configResponse = await page.request.get("/api/v1/config");
   expect(configResponse.ok()).toBe(true);
   const envelope = await configResponse.json() as { data: { enabledToolIds: string[] } };
-  expect(envelope.data.enabledToolIds).toHaveLength(61);
+  expect(envelope.data.enabledToolIds).toHaveLength(70);
 
   for (const toolId of envelope.data.enabledToolIds) {
     await page.goto(`/tools/${toolId}`);

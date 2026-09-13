@@ -27,7 +27,7 @@ export function ToolCard({
   return (
     <Card
       className={cn(
-        "tool-card group relative grid min-h-[5.5rem] grid-cols-9 items-center gap-2 overflow-hidden bg-card p-2.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(92,67,45,0.10)] sm:min-h-[10rem] sm:grid-cols-1 sm:items-start sm:p-0",
+        "tool-card group relative grid min-h-[5.5rem] grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-3 overflow-hidden bg-card p-2.5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(92,67,45,0.10)] sm:min-h-[10rem] sm:grid-cols-1 sm:items-start sm:p-0",
         style.border,
       )}
     >
@@ -43,7 +43,7 @@ export function ToolCard({
         </span>
         <Button
           className={cn(
-            "relative z-10 col-span-1 col-start-9 row-start-1 rounded-xl sm:absolute sm:right-2 sm:top-2",
+            "relative z-10 col-span-1 col-start-3 row-start-1 rounded-xl sm:absolute sm:right-2 sm:top-2",
             favorite && "bg-amber-100 text-amber-700 hover:bg-amber-200",
           )}
           variant={favorite ? "outline" : "ghost"}
@@ -59,7 +59,7 @@ export function ToolCard({
           <Star size={17} className={cn(favorite && "fill-amber-500 text-amber-600")} />
         </Button>
       </CardHeader>
-      <CardContent className="pointer-events-none relative z-[2] col-span-7 col-start-2 row-start-1 min-w-0 p-0 sm:col-span-1 sm:col-start-auto sm:row-start-auto sm:px-4 sm:pb-4">
+      <CardContent className="pointer-events-none relative z-[2] col-span-1 col-start-2 row-start-1 min-w-0 p-0 sm:col-span-1 sm:col-start-auto sm:row-start-auto sm:px-4 sm:pb-4">
         <Badge className={cn("hidden sm:inline-flex", style.icon)}>
           {categoryName(tool.category, language)}
         </Badge>

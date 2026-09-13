@@ -1,5 +1,5 @@
 import { uiText } from "@/lib/ui-text";
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { Check, Clipboard, Download, GripVertical, LoaderCircle, UploadCloud } from 'lucide-react'
 import { validateLocalFile } from '../../lib/tool-engines'
 
@@ -224,19 +224,20 @@ function ImageWorkbench({ toolId, maxFileBytes }: { toolId: ImageToolId; maxFile
       {['png-to-jpg', 'image-to-webp', 'remove-image-metadata'].includes(toolId) && <Field label={`คุณภาพ ${Math.round(quality * 100)}%`}><input type="range" min=".35" max="1" step=".01" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></Field>}
     </>}
     <StatusView status={status} />
-    {result && <div className="image-result output-panel" aria-live="polite"><figure><figcaption>{uiText("ตัวอย่างผลลัพธ์")} · {result.width.toLocaleString()} × {result.height.toLocaleString()} px</figcaption><img src={result.url} alt={uiText("ผลลัพธ์รูปภาพ")} /></figure><div><strong>{result.name}</strong><span>{formatBytes(result.blob.size)}</span><button className="secondary-button" type="button" onClick={() => downloadBlob(result.blob, result.name)}><Download size={16} /> {uiText("ดาวน์โหลดรูปภาพ")}</button></div></div>}
+    {result && <div className="image-result output-panel" aria-live="polite"><figure><figcaption className="image-preview-heading"><span>{uiText("ตัวอย่างผลลัพธ์")} · {result.width.toLocaleString()} × {result.height.toLocaleString()} px</span><button className="preview-download-button" type="button" aria-label={uiText("ดาวน์โหลดผลลัพธ์")} title={uiText("ดาวน์โหลดผลลัพธ์")} onClick={() => downloadBlob(result.blob, result.name)}><Download size={17} aria-hidden="true" /></button></figcaption><img src={result.url} alt={uiText("ผลลัพธ์รูปภาพ")} /></figure><div><strong>{result.name}</strong><span>{formatBytes(result.blob.size)}</span><button className="secondary-button" type="button" onClick={() => downloadBlob(result.blob, result.name)}><Download size={16} /> {uiText("ดาวน์โหลดรูปภาพ")}</button></div></div>}
   </Surface>
 }
 
 function ImageToBase64({ source, status, onFile }: { source: LoadedImage | null; status: Status; onFile: (file?: File) => void }) {
   const [value, setValue] = useState('')
+  const outputId = useId()
   useEffect(() => {
     if (!source) return
     const reader = new FileReader()
     reader.onload = () => setValue(String(reader.result ?? ''))
     reader.readAsDataURL(source.file)
   }, [source])
-  return <Surface><ImagePicker source={source} accept="image/*" onFile={onFile} /><StatusView status={status} />{value && <label className="editor output-editor"><span>Data URL <CopyButton value={value} /></span><textarea className="base64-output" readOnly value={value} /></label>}</Surface>
+  return <Surface><ImagePicker source={source} accept="image/*" onFile={onFile} /><StatusView status={status} />{value && <div className="editor output-editor"><div className="editor-heading"><label htmlFor={outputId}>Data URL</label><div className="editor-actions"><CopyButton value={value} /></div></div><textarea id={outputId} className="base64-output" aria-label="Data URL" readOnly value={value} /></div>}</Surface>
 }
 
 function Base64ToImage({ maxFileBytes }: { maxFileBytes: number }) {
@@ -244,7 +245,8 @@ function Base64ToImage({ maxFileBytes }: { maxFileBytes: number }) {
   const tooLong = value.length > Math.ceil(maxFileBytes * 4 / 3) + 256
   const parsed = useMemo(() => tooLong ? null : parseDataUrl(value), [tooLong, value])
   const tooLarge = tooLong || Boolean(parsed && parsed.blob.size > maxFileBytes)
-  return <Surface><label className="editor"><span>{uiText("Base64 หรือ Data URL")}</span><textarea className="base64-output" value={value} onChange={(event) => setValue(event.target.value)} placeholder="data:image/png;base64,..." /></label>{value && !parsed && !tooLarge && <div className="inline-status error"><p>{uiText("ไม่พบข้อมูลรูปภาพ PNG, JPEG หรือ WebP Base64 ที่ถูกต้อง")}</p></div>}{tooLarge && <div className="inline-status error"><p>{uiText("รูปภาพมีขนาดเกินขีดจำกัดที่รองรับ กรุณาใช้ข้อมูลรูปที่เล็กกว่า")}</p></div>}{parsed && !tooLarge && <div className="image-result output-panel"><img src={parsed.url} alt={uiText("รูปภาพจาก Base64")} /><div><strong>{parsed.mime}</strong><span>{formatBytes(parsed.blob.size)}</span><button className="secondary-button" type="button" onClick={() => downloadBlob(parsed.blob, `decoded-image.${extensionForMime(parsed.mime)}`)}><Download size={16} /> {uiText("ดาวน์โหลด")}</button></div></div>}</Surface>
+  const filename = parsed ? `decoded-image.${extensionForMime(parsed.mime)}` : "";
+  return <Surface><label className="editor"><span>{uiText("Base64 หรือ Data URL")}</span><textarea className="base64-output" value={value} onChange={(event) => setValue(event.target.value)} placeholder="data:image/png;base64,..." /></label>{value && !parsed && !tooLarge && <div className="inline-status error"><p>{uiText("ไม่พบข้อมูลรูปภาพ PNG, JPEG หรือ WebP Base64 ที่ถูกต้อง")}</p></div>}{tooLarge && <div className="inline-status error"><p>{uiText("รูปภาพมีขนาดเกินขีดจำกัดที่รองรับ กรุณาใช้ข้อมูลรูปที่เล็กกว่า")}</p></div>}{parsed && !tooLarge && <div className="image-result output-panel"><figure><figcaption className="image-preview-heading"><span>{uiText("ตัวอย่างผลลัพธ์")}</span><button className="preview-download-button" type="button" aria-label={uiText("ดาวน์โหลดผลลัพธ์")} title={uiText("ดาวน์โหลดผลลัพธ์")} onClick={() => downloadBlob(parsed.blob, filename)}><Download size={17} aria-hidden="true" /></button></figcaption><img src={parsed.url} alt={uiText("รูปภาพจาก Base64")} /></figure><div><strong>{parsed.mime}</strong><span>{formatBytes(parsed.blob.size)}</span><button className="secondary-button" type="button" onClick={() => downloadBlob(parsed.blob, filename)}><Download size={16} /> {uiText("ดาวน์โหลด")}</button></div></div>}</Surface>
 }
 
 function FaviconGenerator({ maxFileBytes }: { maxFileBytes: number }) {
@@ -273,7 +275,7 @@ function FaviconGenerator({ maxFileBytes }: { maxFileBytes: number }) {
       setStatus({ working: false, message: 'สร้าง Favicon 6 ขนาดและดาวน์โหลด ZIP แล้ว', error: '' })
     } catch (reason) { setStatus({ working: false, message: '', error: messageOf(reason, 'สร้าง Favicon ไม่สำเร็จ') }) }
   }
-  return <Surface><ImagePicker source={source} accept="image/*" onFile={onFile} optional /><div className="favicon-preview output-panel"><span>{uiText("ตัวอย่าง Favicon")}</span><div style={{ backgroundColor: color }}>{source ? <img src={source.url} alt={uiText("ตัวอย่างไอคอน")}/>:<strong>{initials.trim().slice(0, 3).toUpperCase() || 'DT'}</strong>}</div><small>{source ? `${source.width} × ${source.height} px` : uiText("ตัวอย่างอักษรย่อ")}</small></div><div className="field-grid two"><Field label={uiText("อักษรย่อ (ใช้เมื่อไม่เลือกรูป)")}><input maxLength={3} value={initials} onChange={(event) => setInitials(event.target.value)} /></Field><Field label={uiText("สีพื้นหลัง")}><div className="color-inline"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><code>{color.toUpperCase()}</code></div></Field></div><button className="primary-button full" type="button" disabled={status.working} onClick={() => void generate()}>{status.working ? <LoaderCircle className="spin" size={18} /> : <Download size={18} />} {uiText("สร้างชุด Favicon")}</button><StatusView status={status} /></Surface>
+  return <Surface><ImagePicker source={source} accept="image/*" onFile={onFile} optional /><div className="favicon-preview output-panel"><div className="image-preview-heading"><span>{uiText("ตัวอย่าง Favicon")}</span><button className="preview-download-button" type="button" aria-label={uiText("ดาวน์โหลดผลลัพธ์")} title={uiText("ดาวน์โหลดผลลัพธ์")} disabled={status.working} onClick={() => void generate()}><Download size={17} aria-hidden="true" /></button></div><div style={{ backgroundColor: color }}>{source ? <img src={source.url} alt={uiText("ตัวอย่างไอคอน")}/>:<strong>{initials.trim().slice(0, 3).toUpperCase() || 'DT'}</strong>}</div><small>{source ? `${source.width} × ${source.height} px` : uiText("ตัวอย่างอักษรย่อ")}</small></div><div className="field-grid two"><Field label={uiText("อักษรย่อ (ใช้เมื่อไม่เลือกรูป)")}><input maxLength={3} value={initials} onChange={(event) => setInitials(event.target.value)} /></Field><Field label={uiText("สีพื้นหลัง")}><div className="color-inline"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><code>{color.toUpperCase()}</code></div></Field></div><button className="primary-button full" type="button" disabled={status.working} onClick={() => void generate()}>{status.working ? <LoaderCircle className="spin" size={18} /> : <Download size={18} />} {uiText("สร้างชุด Favicon")}</button><StatusView status={status} /></Surface>
 }
 
 function ImagePicker({ source, accept, onFile, optional }: { source: LoadedImage | null; accept: string; onFile: (file?: File) => void; optional?: boolean }) {

@@ -79,6 +79,15 @@ export type ToolId =
   | "url-toolkit"
   | "hash-uuid"
   | "pdf-workspace"
+  | "pdf-text"
+  | "manage-pdf-pages"
+  | "pdf-metadata"
+  | "compress-pdf"
+  | "page-number-pdf"
+  | "add-watermark"
+  | "images-to-pdf"
+  | "pdf-to-images"
+  | "split-pdf"
   | "image-resize"
   | "image-crop"
   | "image-compressor"
@@ -135,7 +144,16 @@ const defineTool = (
 ): ToolDefinition => ({ id, name, description, category, keywords, icon });
 
 export const tools: ToolDefinition[] = [
-  defineTool("pdf-workspace", "เครื่องมือ PDF", "รวม แยก จัดหน้า ใส่ลายน้ำ และแปลง PDF", "PDF", ["pdf", "merge", "split", "rotate", "watermark", "compress", "แยกหน้า"], FileStack),
+  defineTool("pdf-workspace", "รวมไฟล์ PDF", "รวมไฟล์ PDF หลายไฟล์และจัดเรียงก่อนดาวน์โหลด", "PDF", ["pdf", "merge", "combine", "รวมไฟล์"], FileStack),
+  defineTool("pdf-text", "คัดลอกข้อความ PDF", "อ่านข้อความใน PDF แล้วคัดลอกหรือดาวน์โหลดข้อความ", "PDF", ["pdf", "text", "extract", "copy", "อ่านข้อความ"], FileText),
+  defineTool("manage-pdf-pages", "จัดการหน้า PDF", "เรียงลำดับ หมุน และลบหน้า PDF", "PDF", ["pdf", "pages", "organize", "reorder", "rotate", "delete", "จัดหน้า"], ListOrdered),
+  defineTool("split-pdf", "แยกหน้า PDF", "เลือกช่วงหน้าเพื่อแยกออกเป็นไฟล์ PDF", "PDF", ["pdf", "split", "pages", "แยกหน้า"], ListFilter),
+  defineTool("pdf-metadata", "ดูข้อมูล PDF", "ตรวจดูชื่อเรื่อง ผู้สร้าง วันที่ และข้อมูลของไฟล์ PDF", "PDF", ["pdf", "metadata", "info", "ข้อมูลไฟล์"], ScanLine),
+  defineTool("compress-pdf", "ลดขนาด PDF", "ลดขนาดไฟล์ PDF ในเบราว์เซอร์", "PDF", ["pdf", "compress", "size", "บีบอัด"], Scaling),
+  defineTool("page-number-pdf", "ใส่เลขหน้า PDF", "กำหนดรูปแบบ ช่วง และตำแหน่งเลขหน้าบน PDF", "PDF", ["pdf", "page numbers", "numbering", "เลขหน้า"], Hash),
+  defineTool("add-watermark", "ใส่ลายน้ำ PDF", "เพิ่มและจัดตำแหน่งลายน้ำบนหน้า PDF", "PDF", ["pdf", "watermark", "stamp", "ลายน้ำ"], Sparkles),
+  defineTool("images-to-pdf", "รูปภาพเป็น PDF", "รวมรูปภาพเป็นไฟล์ PDF พร้อมดูตัวอย่างก่อนดาวน์โหลด", "PDF", ["image", "images", "to pdf", "รูปภาพเป็น pdf"], FileImage),
+  defineTool("pdf-to-images", "PDF เป็นรูปภาพ", "แปลงหน้า PDF เป็นรูปภาพเพื่อดาวน์โหลด", "PDF", ["pdf", "jpg", "jpeg", "image", "convert"], FileImage),
 
   defineTool("text-word-count", "นับจำนวนคำ", "นับคำ บรรทัด ย่อหน้า และเวลาอ่าน", "ข้อความ", ["word", "count", "paragraph", "reading time"], TextCursorInput),
   defineTool("text-character-count", "นับจำนวนตัวอักษร", "นับตัวอักษรทั้งแบบรวมและไม่รวมช่องว่าง", "ข้อความ", ["character", "count", "length", "unicode"], Hash),

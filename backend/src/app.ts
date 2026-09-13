@@ -3,6 +3,15 @@ import { Elysia } from "elysia";
 
 const toolIds = [
   "pdf-workspace",
+  "pdf-text",
+  "manage-pdf-pages",
+  "pdf-metadata",
+  "compress-pdf",
+  "page-number-pdf",
+  "add-watermark",
+  "images-to-pdf",
+  "pdf-to-images",
+  "split-pdf",
   "text-word-count",
   "text-character-count",
   "text-transformer",

@@ -649,8 +649,8 @@ function HashTool() {
   );
 }
 
-function PdfTool({ maxFileBytes }: { maxFileBytes: number }) {
-  return <LazyPanel><LazyPdfWorkspace maxFileBytes={maxFileBytes} /></LazyPanel>;
+function PdfTool({ toolId, maxFileBytes }: { toolId: string; maxFileBytes: number }) {
+  return <LazyPanel><LazyPdfWorkspace toolId={toolId} maxFileBytes={maxFileBytes} /></LazyPanel>;
 }
 
 function TwoCols({ children }: { children: ReactNode }) {
@@ -704,7 +704,16 @@ export function ToolWorkspace() {
     base64: <ConverterTool type="base64" />,
     "url-toolkit": <ConverterTool type="url" />,
     "hash-uuid": <HashTool />,
-    "pdf-workspace": <PdfTool maxFileBytes={config.maxLocalFileBytes} />,
+    "pdf-workspace": <PdfTool toolId="merge-pdf" maxFileBytes={config.maxLocalFileBytes} />,
+    "pdf-text": <PdfTool toolId="pdf-text" maxFileBytes={config.maxLocalFileBytes} />,
+    "manage-pdf-pages": <PdfTool toolId="manage-pdf-pages" maxFileBytes={config.maxLocalFileBytes} />,
+    "pdf-metadata": <PdfTool toolId="pdf-metadata" maxFileBytes={config.maxLocalFileBytes} />,
+    "compress-pdf": <PdfTool toolId="compress-pdf" maxFileBytes={config.maxLocalFileBytes} />,
+    "page-number-pdf": <PdfTool toolId="page-number-pdf" maxFileBytes={config.maxLocalFileBytes} />,
+    "add-watermark": <PdfTool toolId="add-watermark" maxFileBytes={config.maxLocalFileBytes} />,
+    "images-to-pdf": <PdfTool toolId="images-to-pdf" maxFileBytes={config.maxLocalFileBytes} />,
+    "pdf-to-images": <PdfTool toolId="pdf-to-images" maxFileBytes={config.maxLocalFileBytes} />,
+    "split-pdf": <PdfTool toolId="split-pdf" maxFileBytes={config.maxLocalFileBytes} />,
     "image-resize": <LazyPanel><LazyImagePanel toolId="image-resize" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
     "image-crop": <LazyPanel><LazyImagePanel toolId="image-crop" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
     "image-compressor": <LazyPanel><LazyImagePanel toolId="image-compressor" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
@@ -746,7 +755,7 @@ export function ToolWorkspace() {
     <div className="mx-auto max-w-7xl">
       <Link
         to={backTo}
-        className="mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:mb-5 sm:text-sm"
+        className="workspace-back-sticky mb-3 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:mb-5 sm:text-sm"
       >
         <ArrowLeft size={16} />
         {backTo === "/"

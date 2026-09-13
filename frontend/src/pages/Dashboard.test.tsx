@@ -11,7 +11,11 @@ function CurrentPath() {
   return <output aria-label="Current route">{location.pathname}</output>;
 }
 
-function renderDashboard() {
+function renderDashboard(language: "th" | "en" | "default" = "en") {
+  if (language !== "default") {
+    localStorage.setItem("tfd:language", language);
+    localStorage.setItem("tfd:language-selected", "true");
+  }
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
   return render(
     <QueryClientProvider
@@ -36,6 +40,14 @@ afterEach(() => {
 });
 
 describe("Dashboard", () => {
+  it("defaults to Thai when there is no saved language choice", () => {
+    renderDashboard("default");
+
+    expect(document.documentElement.lang).toBe("th");
+    expect(document.documentElement.dataset.language).toBe("th");
+    expect(screen.getByRole("heading", { name: /สำรวจ 9 หมวดหมู่/ })).toBeInTheDocument();
+  });
+
   it("shows only nine categories, keeps favorites visible, and has no recent row", () => {
     localStorage.setItem("tfd:favorites", JSON.stringify(["json-toolkit"]));
     renderDashboard();

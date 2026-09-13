@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowRight, ArrowUpRight, Check, Search, Star, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Search, Star, X } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { useRuntimeConfig } from "@/lib/api";
@@ -250,7 +250,7 @@ export function Dashboard() {
               </Badge>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-              {text("รวมเครื่องมือที่คุณอยากกลับมาใช้บ่อยๆ", "Keep the tools you reach for close by.")}
+              {text("รวมเครื่องมือที่คุณใช้บ่อยๆ", "Keep the tools you reach for close by.")}
             </p>
           </div>
         </header>
@@ -279,8 +279,8 @@ export function Dashboard() {
                     aria-label={text("นำออกจากรายการโปรด: ", "Remove from favorites: ") + toolName(tool, language)}
                     onClick={() => toggleFavorite(tool.id)}
                   >
-                    <Check size={15} />
-                    <span className="sr-only">{text("บันทึกแล้ว", "Saved")}</span>
+                    <X size={15} />
+                    <span className="sr-only">{text("นำออกจากรายการโปรด", "Remove from favorites")}</span>
                   </button>
                 </div>
               );

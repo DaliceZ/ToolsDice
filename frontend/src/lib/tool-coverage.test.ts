@@ -24,7 +24,7 @@ describe("source catalog coverage", () => {
 
   it("exposes one unique target card per route in the nine chosen categories", () => {
     const targetIds = tools.map((tool) => tool.id);
-    expect(targetIds).toHaveLength(61);
+    expect(targetIds).toHaveLength(70);
     expect(new Set(targetIds).size).toBe(targetIds.length);
     expect(toolById.size).toBe(targetIds.length);
     expect(categories).toEqual([

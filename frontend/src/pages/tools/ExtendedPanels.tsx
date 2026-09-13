@@ -1,5 +1,5 @@
 import { uiText } from "@/lib/ui-text";
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useLanguage } from '@/lib/language'
 import { Check, Clipboard, Download, FileCode2, Hash, LoaderCircle, RefreshCw, ShieldCheck, Sparkles, UploadCloud } from 'lucide-react'
 import type { ToolDefinition } from '../../lib/tool-registry'
@@ -213,7 +213,13 @@ type TextStats = ReturnType<typeof textStats>
 function Metrics({ stats }: { stats: TextStats }) { const { language } = useLanguage(); return <div className="stat-grid"><OutputMetric label={uiText("ตัวอักษร")} value={String(stats.characters)} /><OutputMetric label={uiText("ไม่รวมช่องว่าง")} value={String(stats.noSpaces)} /><OutputMetric label={uiText("คำ")} value={String(stats.words)} /><OutputMetric label={uiText("บรรทัด")} value={String(stats.lines)} /><OutputMetric label={uiText("ย่อหน้า")} value={String(stats.paragraphs)} /><OutputMetric label={uiText("เวลาอ่าน")} value={`${stats.readingMinutes} ${language === 'en' ? 'min' : 'นาที'}`} /></div> }
 function Surface({ children }: { children: React.ReactNode }) { return <div className="tool-surface extended-surface">{children}</div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{uiText(label)}</span>{children}</label> }
-function Editor({ label, value, onChange, readOnly, action }: { label: string; value: string; onChange?: (value: string) => void; readOnly?: boolean; action?: React.ReactNode }) { return <label className={readOnly ? "editor output-editor" : "editor"}><span>{uiText(label)}{action}</span><textarea value={value} readOnly={readOnly} onChange={(event) => onChange?.(event.target.value)} /></label> }
+function Editor({ label, value, onChange, readOnly, action }: { label: string; value: string; onChange?: (value: string) => void; readOnly?: boolean; action?: React.ReactNode }) {
+  const id = useId()
+  return <div className={readOnly ? "editor output-editor" : "editor"}>
+    <div className="editor-heading"><label htmlFor={id}>{uiText(label)}</label>{action && <div className="editor-actions">{action}</div>}</div>
+    <textarea id={id} aria-label={uiText(label)} value={value} readOnly={readOnly} onChange={(event) => onChange?.(event.target.value)} />
+  </div>
+}
 function Output({ value, copy }: { value: string; copy?: boolean }) { return <div className="result-box output-panel"><span>{uiText("ผลลัพธ์")}{copy && <CopyButton value={value} />}</span><p className="break-all">{value}</p></div> }
 function OutputMetric({ label, value }: { label: string; value: string }) { return <div><span>{uiText(label)}</span><strong>{value}</strong></div> }
 function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (value: T) => void; options: Array<[T, string]> }) { return <div className="segmented wide">{options.map(([id, label]) => <button className={value === id ? 'active' : ''} type="button" onClick={() => onChange(id)} key={id}>{uiText(label)}</button>)}</div> }

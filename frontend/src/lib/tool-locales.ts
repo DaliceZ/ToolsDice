@@ -38,7 +38,16 @@ export const categoryDescriptions: Record<ToolCategory, { th: string; en: string
 };
 
 const englishTools: Record<ToolId, { name: string; description: string }> = {
-  "pdf-workspace": { name: "PDF Workspace", description: "Merge, split, organize pages, watermark, and convert PDFs." },
+  "pdf-workspace": { name: "Merge PDFs", description: "Combine PDF files and arrange their order before downloading." },
+  "pdf-text": { name: "Copy PDF Text", description: "Read text from a PDF, then copy or download the result." },
+  "manage-pdf-pages": { name: "Manage PDF Pages", description: "Reorder, rotate, and delete PDF pages." },
+  "pdf-metadata": { name: "PDF Information", description: "Inspect the title, author, dates, and other PDF file details." },
+  "compress-pdf": { name: "Compress PDF", description: "Reduce a PDF file locally in your browser." },
+  "page-number-pdf": { name: "Add PDF Page Numbers", description: "Choose the numbering style, page ranges, and position." },
+  "add-watermark": { name: "Add PDF Watermark", description: "Add and position a watermark on PDF pages." },
+  "images-to-pdf": { name: "Images to PDF", description: "Combine images into a PDF and preview them before downloading." },
+  "pdf-to-images": { name: "PDF to Images", description: "Convert PDF pages into images for download." },
+  "split-pdf": { name: "Split PDF", description: "Choose page ranges to split into separate PDF files." },
   "text-word-count": { name: "Word Counter", description: "Count words, lines, paragraphs, and reading time." },
   "text-character-count": { name: "Character Counter", description: "Count characters with or without spaces." },
   "text-transformer": { name: "Text Case Converter", description: "Convert text to upper, lower, title, or sentence case." },

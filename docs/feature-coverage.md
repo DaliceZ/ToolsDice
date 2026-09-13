@@ -4,14 +4,14 @@ The machine-readable matrix is [`sourceToolCoverage`](../frontend/src/lib/tool-c
 It contains one row per source catalog entry and names the destination route and
 mode for every retained feature. The coverage test checks that all 90 source
 IDs are unique, each retained route exists, the exclusions are explicit, the
-61 target routes are unique, and frontend fallback config matches the backend
+70 target routes are unique, and frontend fallback config matches the backend
 allowlist. Run `bun run test` to verify it.
 
 ## Summary
 
 | Source category | Source entries | Retained | Destination |
 | --- | ---: | ---: | --- |
-| PDF | 12 | 12 | PDF Workspace |
+| PDF | 12 | 12 | 10 focused routes; page reordering, rotation, and deletion share Manage PDF Pages |
 | ข้อความ | 16 | 16 | 16 focused text-tool routes |
 | รูปภาพ | 12 | 12 | 12 image routes |
 | นักพัฒนา | 14 | 14 | JSON Toolkit, URL Toolkit, JWT, Regex, Cron, and code format/minify routes |
@@ -21,7 +21,7 @@ allowlist. Run `bun run test` to verify it.
 | วันและเวลา | 3 | 3 | Date Calculator, Thai Year, and Pomodoro |
 | แชร์ | 3 | 1 | Shared Checklist moves to ข้อมูล; remote sharing features are excluded |
 | คำนวณ | 2 | 2 | Split Bill and BMI/TDEE |
-| **Total** | **90** | **87** | **61 routes, including the existing Timezone Converter** |
+| **Total** | **90** | **87** | **70 routes, including the existing Timezone Converter** |
 
 ## Excluded source entries
 
@@ -34,4 +34,6 @@ allowlist. Run `bun run test` to verify it.
 The shared Checklist is retained as `checklist` and intentionally stores entries
 in page memory only. JSON import and export are initiated by the user. Existing
 ToolsDice route slugs remain stable; related source entries share one route
-when they are modes of the same tool.
+when they are modes of the same tool. PDF tools are listed individually in the
+category and sidebar, while page reordering, rotation, and deletion remain
+grouped in the Manage PDF Pages route.

@@ -1,8 +1,8 @@
 # ToolsDice
 
-ToolsDice is a privacy-first collection of browser utilities. The English UI is
-selected by default; the custom language menu can switch to Thai. English uses
-Poppins and Thai uses Sarabun. The Classic theme starts with a light cream
+ToolsDice is a privacy-first collection of browser utilities. The Thai UI is
+selected by default; the custom language menu can switch to English. Thai uses
+Sarabun and English uses Poppins. The Classic theme starts with a light cream
 palette, and users can choose Dark, Exclusive, Matcha, or Volcano from the
 custom theme menu. Text and files are processed in the browser and are not sent
 to the API or saved as editor content.
@@ -12,9 +12,11 @@ overview highlights favorites and does not track recently used tools. Favorite,
 language, and theme preferences stay in browser storage; Checklist items stay
 in page memory until the page closes.
 
-The catalog has 61 routes across PDF, Text, Images, Developer, Converters,
+The catalog has 70 routes across PDF, Text, Images, Developer, Converters,
 Data, Generators, Date & Time, and Calculators. The 90 source capabilities are
-covered by 87 local capabilities through shared routes and modes. Three
+covered by 87 local capabilities through shared routes and modes. PDF tasks are
+separate routes shown in the PDF category and sidebar; page reordering, rotation,
+and deletion share the Manage PDF Pages tool. Three
 features that require an API or remote storage are excluded. See the
 [feature coverage matrix](./docs/feature-coverage.md) and its machine-readable
 source in [tool-coverage.ts](./frontend/src/lib/tool-coverage.ts).

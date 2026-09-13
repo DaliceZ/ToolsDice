@@ -2,7 +2,7 @@
 
 ## Product and privacy
 
-ToolsDice is an English-default, privacy-first browser utility suite with
+ToolsDice is a Thai-default, privacy-first browser utility suite with
 English and Thai UI. Text, JSON, YAML, URLs, dates, PDF files, image files,
 hashes, and Checklist items are
 processed in the browser. Never upload tool inputs, add analytics, persist
@@ -21,7 +21,7 @@ chooses the matching action.
 - `frontend/`: React + Vite + TypeScript + Tailwind CSS. React Router owns tool
   URLs, TanStack Query owns public runtime config, and local component state
   owns tool inputs.
-- `frontend/src/lib/tool-registry.ts` is the source of truth for 61 stable tool
+- `frontend/src/lib/tool-registry.ts` is the source of truth for 70 stable tool
   routes, labels, categories, keywords, and icons.
 - `frontend/src/lib/tool-engines.ts` is the public barrel for pure processing
   functions. Domain engines live in `frontend/src/lib/tool-engines/`.
@@ -39,16 +39,18 @@ chooses the matching action.
   frontend with nginx and proxy `/api` to Elysia.
 
 The language and theme providers and bilingual tool catalog live in
-`frontend/src/lib`. English is the default UI language; Thai uses Sarabun and
-English uses Poppins. The overview links to nine category pages; a category
+`frontend/src/lib`. Thai is the default UI language and uses Sarabun; English
+uses Poppins. The overview links to nine category pages; a category
 page lists its tools, and each tool has its own local workspace.
 
 ## Tool catalog and conventions
 
-The catalog has 61 routes in nine categories: PDF, Text, Images, Developer,
+The catalog has 70 routes in nine categories: PDF, Text, Images, Developer,
 Converters, Data, Generators, Date & Time, and Calculators. Multiple source
-features may share a route when they are modes of the same tool, such as PDF
-Workspace, JSON Toolkit, CSV Workspace, and URL Toolkit. The Checklist replaces the source
+features may share a route when they are modes of the same tool, such as JSON
+Toolkit, CSV Workspace, and URL Toolkit. PDF tools have separate routes and
+appear directly in the PDF category and sidebar; page reordering, rotation, and
+deletion share Manage PDF Pages. The Checklist replaces the source
 shared checklist with an in-memory, user-controlled local version. Short Link,
 Burn Note, and YouTube conversion are excluded because they require remote
 storage or an external API.

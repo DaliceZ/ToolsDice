@@ -1,5 +1,5 @@
 import { uiText } from "@/lib/ui-text";
-import { useMemo, useRef, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '@/lib/language'
 import { Check, Clipboard, Download, FileSpreadsheet, UploadCloud } from 'lucide-react'
 import { objectsToCsv, parseCsv, validateTabularFile } from './dataUtils'
@@ -37,6 +37,7 @@ function DataToolPanel({ toolId, maxFileBytes, language }: { toolId: string; max
   const [query, setQuery] = useState('')
   const [column, setColumn] = useState('')
   const [direction, setDirection] = useState<'asc' | 'desc'>('asc')
+  const outputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const parsed = useMemo(() => parseTabularInput(input, toolId), [input, toolId])
   const headers = parsed.headers
@@ -87,7 +88,7 @@ function DataToolPanel({ toolId, maxFileBytes, language }: { toolId: string; max
         {toolId === 'sort-table' && <label className="field"><span>{uiText("ลำดับ")}</span><select value={direction} onChange={(event) => setDirection(event.target.value as 'asc' | 'desc')}><option value="asc">{uiText("น้อย → มาก")}</option><option value="desc">{uiText("มาก → น้อย")}</option></select></label>}
       </div>
       <div className="data-summary output-panel"><span><FileSpreadsheet size={15} /> {rows.length.toLocaleString(locale)} {uiText("แถว")}</span><span>{headers.length.toLocaleString(locale)} {uiText("คอลัมน์")}</span>{parsed.source && <span>{parsed.source}</span>}</div>
-      {output && <label className="editor output-editor"><span>{uiText("ผลลัพธ์ ")}<CopyButton value={output} /></span><textarea className="data-output" readOnly value={output} /></label>}
+      {output && <div className="editor output-editor"><div className="editor-heading"><label htmlFor={outputId}>{uiText("ผลลัพธ์")}</label><div className="editor-actions"><CopyButton value={output} /></div></div><textarea id={outputId} className="data-output" aria-label={uiText("ผลลัพธ์")} readOnly value={output} /></div>}
       {headers.length > 0 && <div className="table-shell output-panel"><table><thead><tr>{headers.map((header) => <th key={header}>{toolId === 'csv-viewer' ? <button type="button" className={column === header ? 'active' : ''} onClick={() => { if (column === header) setDirection((value) => value === 'asc' ? 'desc' : 'asc'); else { setColumn(header); setDirection('asc') } }}>{header}{column === header ? direction === 'asc' ? ' ↑' : ' ↓' : ''}</button> : header}</th>)}</tr></thead><tbody>{visibleRows.map((row, rowIndex) => <tr key={rowIndex}>{headers.map((header) => <td key={header}>{row[header] ?? ''}</td>)}</tr>)}</tbody></table>{visibleRows.length === 0 && <div className="empty-table">{uiText("ไม่พบข้อมูลที่ตรงกับเงื่อนไข")}</div>}</div>}
       {['csv-viewer', 'csv-to-table'].includes(toolId) && rows.length > pageSize && <div className="pagination"><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>{uiText("ก่อนหน้า")}</button><span>{uiText("หน้า ")}{currentPage} / {totalPages}</span><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>{uiText("ถัดไป")}</button><select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}><option value="10">{uiText("10 แถว")}</option><option value="25">{uiText("25 แถว")}</option><option value="50">{uiText("50 แถว")}</option></select></div>}
       {output && <div className="tool-actions"><button className="secondary-button" type="button" onClick={() => downloadText(output, toolId === 'table-to-json' ? 'table.json' : `${toolId}.csv`)}><Download size={16} /> {uiText("ดาวน์โหลดผลลัพธ์")}</button></div>}

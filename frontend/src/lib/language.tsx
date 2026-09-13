@@ -10,6 +10,9 @@ import {
 
 export type AppLanguage = "th" | "en";
 
+const LANGUAGE_KEY = "tfd:language";
+const LANGUAGE_SELECTED_KEY = "tfd:language-selected";
+
 type LanguageContextValue = {
   language: AppLanguage;
   setLanguage: (language: AppLanguage) => void;
@@ -21,9 +24,11 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 function readLanguage(): AppLanguage {
   let language: AppLanguage;
   try {
-    language = localStorage.getItem("tfd:language") === "th" ? "th" : "en";
+    const storedLanguage = localStorage.getItem(LANGUAGE_KEY);
+    const hasExplicitChoice = localStorage.getItem(LANGUAGE_SELECTED_KEY) === "true";
+    language = hasExplicitChoice && storedLanguage === "en" ? "en" : "th";
   } catch {
-    language = "en";
+    language = "th";
   }
   document.documentElement.lang = language;
   document.documentElement.dataset.language = language;
@@ -33,6 +38,12 @@ function readLanguage(): AppLanguage {
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, updateLanguage] = useState<AppLanguage>(readLanguage);
   const setLanguage = useCallback((next: AppLanguage) => {
+    try {
+      localStorage.setItem(LANGUAGE_KEY, next);
+      localStorage.setItem(LANGUAGE_SELECTED_KEY, "true");
+    } catch {
+      // The selected language still applies for the current page.
+    }
     document.documentElement.lang = next;
     document.documentElement.dataset.language = next;
     updateLanguage(next);
@@ -46,11 +57,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       description.content = language === "en"
         ? "Private text, image, PDF, data, and developer tools that work in your browser."
         : "เครื่องมือข้อความ รูปภาพ PDF ข้อมูล และนักพัฒนาที่ประมวลผลในเบราว์เซอร์";
-    }
-    try {
-      localStorage.setItem("tfd:language", language);
-    } catch {
-      // The interface remains usable when browser storage is unavailable.
     }
   }, [language]);
 
