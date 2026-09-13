@@ -67,8 +67,8 @@ const origins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
   .map((value) => value.trim())
   .filter(Boolean);
 
-export const createApp = () =>
-  new Elysia()
+export const createApp = (app = new Elysia()) =>
+  app
     .use(cors({ origin: origins, methods: ["GET", "OPTIONS"] }))
     .derive(({ request, set }) => {
       const requestId =
