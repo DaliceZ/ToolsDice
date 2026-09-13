@@ -38,8 +38,8 @@ matching action.
   active route and mode, or records why the source entry is paused or omitted.
   It keeps 59 source capabilities in the current catalog.
 - backend/: Bun + Elysia. It exposes health and public runtime config only.
-  `src/index.ts` exports the Elysia app for Vercel; `src/server.ts` owns the
-  local and container HTTP listener.
+  `src/index.ts` is the Vercel entry point; `src/local-server.ts` owns the local
+  and container HTTP listener.
 - Root: Bun workspaces and Docker Compose. Production containers serve the
   frontend with nginx and proxy /api to Elysia.
 

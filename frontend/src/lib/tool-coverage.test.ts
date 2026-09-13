@@ -71,7 +71,13 @@ describe("source catalog coverage", () => {
   it("keeps public runtime configuration aligned with the frontend registry", () => {
     const expected = tools.map((tool) => tool.id).sort();
     expect([...fallbackConfig.enabledToolIds].sort()).toEqual(expected);
-    const apiSource = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../backend/src/app.ts"), "utf8");
+    const apiSource = readFileSync(
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../backend/src/application.ts",
+      ),
+      "utf8",
+    );
     const list = /const toolIds = \[([\s\S]*?)\] as const/u.exec(apiSource)?.[1];
     expect(list).toBeTruthy();
     const configured = [...(list ?? "").matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]).sort();

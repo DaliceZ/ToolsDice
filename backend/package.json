@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/server.ts",
-    "start": "bun src/server.ts",
+    "dev": "bun --watch src/local-server.ts",
+    "start": "bun src/local-server.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
     "test": "bun test"

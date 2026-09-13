@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { createApp } from './app'
+import { createApp } from './application'
 
 describe('API', () => {
   it('returns the health envelope and security headers', async () => {
