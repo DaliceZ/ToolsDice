@@ -12,4 +12,4 @@ COPY backend ./backend
 WORKDIR /app/backend
 ENV API_PORT=3000
 EXPOSE 3000
-CMD ["bun", "run", "src/index.ts"]
+CMD ["bun", "run", "start"]

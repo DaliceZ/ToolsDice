@@ -6,14 +6,16 @@ import {
   Check,
   Clipboard,
   Download,
+  Globe2,
+  Hash,
   Heart,
   RefreshCw,
 } from "lucide-react";
+import { ChoiceMenu, type Choice } from "@/components/ChoiceMenu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { usePreferences } from "@/lib/preferences";
 import { toolById, type ToolId } from "@/lib/tool-registry";
@@ -21,21 +23,11 @@ import { categoryName, toolDescription, toolName } from "@/lib/tool-locales";
 import {
   base64Decode,
   base64Encode,
-  buildQuery,
   calculateDateDifference,
   compareText,
-  convertStructured,
-  decodeUrlComponent,
   formatInTimeZone,
-  formatJson,
-  parseQuery,
-  parseUrlComponents,
-  parseTimestamp,
   sha,
-  textStatistics,
-  transformText,
   wallTimeToInstant,
-  type TransformMode,
 } from "@/lib/tool-engines";
 import { useRuntimeConfig } from "@/lib/api";
 import { categoryStyles } from "@/lib/category-styles";
@@ -45,10 +37,22 @@ import { cn } from "@/lib/utils";
 const LazyTextTools = lazy(() => import("./TextToolsRouter").then((module) => ({ default: module.TextToolsRouter })));
 const LazyPdfWorkspace = lazy(() => import("./tools/PdfPanels").then((module) => ({ default: module.PdfWorkspacePanel })));
 const LazyImagePanel = lazy(() => import("./tools/ImagePanels").then((module) => ({ default: module.ImageToolPanel })));
-const LazyDataWorkspace = lazy(() => import("./tools/DataPanels").then((module) => ({ default: module.DataWorkspacePanel })));
-const LazyChecklist = lazy(() => import("./tools/ChecklistTool").then((module) => ({ default: module.ChecklistTool })));
+const LazyApiClient = lazy(() => import("./tools/ApiClient").then((module) => ({ default: module.ApiClient })));
+const LazyEverydayPanel = lazy(() => import("./tools/EverydayPanels").then((module) => ({ default: module.EverydayToolPanel })));
 const LazyExtendedPanel = lazy(() => import("./tools/ExtendedPanels").then((module) => ({ default: module.ExtendedToolPanel })));
 const LazyAdditionalPanel = lazy(() => import("./tools/AdditionalPanels").then((module) => ({ default: module.AdditionalToolPanel })));
+
+const legacyTextRouteRedirects: Record<string, string> = {
+  "text-character-count": "/tools/text-word-count",
+  "text-statistics": "/tools/text-word-count",
+  "text-transformer": "/categories/text",
+  "text-sort-lines": "/categories/text",
+  "text-whitespace": "/categories/text",
+  "text-markdown": "/categories/text",
+  "text-slug": "/categories/text",
+  "text-remove-empty": "/categories/text",
+  "text-clean": "/categories/text",
+};
 
 function PanelLoading() {
   return <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground" role="status">{uiText("กำลังเปิดเครื่องมือ…")}</div>;
@@ -142,80 +146,6 @@ function SafeOutput({
   );
 }
 
-function TransformTool() {
-  const [input, setInput] = useState("");
-  const [mode, setMode] = useState<TransformMode>("upper");
-  const output = transformText(input, mode);
-  return (
-    <TwoCols>
-      <Card>
-        <CardHeader>
-          <h2 className="font-bold">{uiText("ข้อความต้นฉบับ")}</h2>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Select
-            value={mode}
-            onChange={(event) => setMode(event.target.value as TransformMode)}
-          >
-            <option value="upper">UPPERCASE</option>
-            <option value="lower">lowercase</option>
-            <option value="title">Title Case</option>
-            <option value="sentence">Sentence case</option>
-          </Select>
-          <Textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={uiText("วางข้อความที่นี่…")}
-          />
-        </CardContent>
-      </Card>
-      <SafeOutput value={output} />
-    </TwoCols>
-  );
-}
-
-function StatisticsTool() {
-  const { language } = useLanguage();
-  const [input, setInput] = useState("");
-  const stats = textStatistics(input);
-  return (
-    <div className="grid gap-5">
-      <Card>
-        <CardHeader>
-          <h2 className="font-bold">{uiText("ข้อความ")}</h2>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={uiText("เริ่มพิมพ์หรือวางข้อความ…")}
-          />
-        </CardContent>
-      </Card>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
-        {Object.entries({
-          ตัวอักษร: stats.characters,
-          ไม่รวมช่องว่าง: stats.charactersNoSpaces,
-          คำ: stats.words,
-          บรรทัด: stats.lines,
-          ย่อหน้า: stats.paragraphs,
-          เวลาอ่าน: stats.readingTimeMinutes ? `${stats.readingTimeMinutes} ${uiText("นาที")}` : `0 ${uiText("นาที")}`,
-          Bytes: stats.bytes,
-        }).map(([label, value]) => (
-          <Card key={label}>
-            <CardContent className="pt-5">
-              <strong className="block text-3xl text-primary">
-                {value.toLocaleString(language === "en" ? "en-US" : "th-TH")}
-              </strong>
-              <span className="text-sm text-muted-foreground">{uiText(label)}</span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function DiffTool() {
   const [before, setBefore] = useState("");
   const [after, setAfter] = useState("");
@@ -268,46 +198,6 @@ function DiffTool() {
   );
 }
 
-function TimestampTool() {
-  const { language } = useLanguage();
-  const [input, setInput] = useState(() => Date.now().toString());
-  let result = "";
-  let error = "";
-  try {
-    const date = parseTimestamp(input);
-    result = [
-      `ISO: ${date.toISOString()}`,
-      `Unix seconds: ${Math.floor(date.getTime() / 1000)}`,
-      `Unix milliseconds: ${date.getTime()}`,
-      `${language === "en" ? "Bangkok time" : "เวลาไทย"}: ${formatInTimeZone(date, "Asia/Bangkok", language === "en" ? "en-US" : "th-TH")}`,
-    ].join("\n");
-  } catch (cause) {
-    error = cause instanceof Error ? cause.message : "แปลงเวลาไม่สำเร็จ";
-  }
-  return (
-    <TwoCols>
-      <Card>
-        <CardHeader>
-          <h2 className="font-bold">{uiText("วันเวลาหรือ Timestamp")}</h2>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-          />
-          <Button
-            variant="outline"
-            onClick={() => setInput(Date.now().toString())}
-          >
-            <RefreshCw size={16} />
-            {uiText("เวลาปัจจุบัน")}</Button>
-        </CardContent>
-      </Card>
-      <SafeOutput value={result} error={error} />
-    </TwoCols>
-  );
-}
-
 const timeZones = [
   "Asia/Bangkok",
   "UTC",
@@ -326,6 +216,7 @@ function TimezoneTool() {
   );
   const [from, setFrom] = useState("Asia/Bangkok");
   const [to, setTo] = useState("UTC");
+  const zoneChoices: Choice[] = timeZones.map((zone) => ({ value: zone, label: zone, compact: zone }));
   let result = "";
   let error = "";
   try {
@@ -351,26 +242,24 @@ function TimezoneTool() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={uiText("จาก")}>
-              <Select
-                className="w-full"
+              <ChoiceMenu
+                className="choice-field"
+                label={language === "en" ? "From time zone" : "เขตเวลาต้นทาง"}
                 value={from}
-                onChange={(event) => setFrom(event.target.value)}
-              >
-                {timeZones.map((zone) => (
-                  <option key={zone}>{zone}</option>
-                ))}
-              </Select>
+                icon={Globe2}
+                choices={zoneChoices}
+                onSelect={setFrom}
+              />
             </Field>
             <Field label={uiText("ไปยัง")}>
-              <Select
-                className="w-full"
+              <ChoiceMenu
+                className="choice-field"
+                label={language === "en" ? "To time zone" : "เขตเวลาปลายทาง"}
                 value={to}
-                onChange={(event) => setTo(event.target.value)}
-              >
-                {timeZones.map((zone) => (
-                  <option key={zone}>{zone}</option>
-                ))}
-              </Select>
+                icon={Globe2}
+                choices={zoneChoices}
+                onSelect={setTo}
+              />
             </Field>
           </div>
         </CardContent>
@@ -432,137 +321,61 @@ function DateCalculatorTool() {
   );
 }
 
-function ConverterTool({ type }: { type: "json" | "yaml" | "base64" | "url" }) {
+function ConverterTool() {
+  const { text } = useLanguage();
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState(
-    type === "json" ? "format" : type === "yaml" ? "json-to-yaml" : "encode",
-  );
-  const [sortKeys, setSortKeys] = useState(false);
-  const [indent, setIndent] = useState<2 | 4>(2);
+  const [mode, setMode] = useState<"encode" | "decode">("encode");
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
   useEffect(() => {
-    let live = true;
-    setOutput("");
-    setError("");
     if (!input.trim()) {
-      setPending(false);
-      return () => { live = false; };
+      setOutput("");
+      setError("");
+      return;
     }
     try {
-      if (type === "json") setOutput(formatJson(input, mode === "minify", { sortKeys, indent }));
-      else if (type === "yaml") {
-        setPending(true);
-        void convertStructured(input, mode as "json-to-yaml" | "yaml-to-json")
-          .then((value) => { if (live) setOutput(value); })
-          .catch((cause: unknown) => { if (live) setError(errorMessage(cause)); })
-          .finally(() => { if (live) setPending(false); });
-      } else if (type === "base64") {
-        setOutput(mode === "encode" ? base64Encode(input) : base64Decode(input));
-      } else if (type === "url") {
-        if (mode === "encode") setOutput(encodeURIComponent(input));
-        else if (mode === "decode") setOutput(decodeUrlComponent(input));
-        else if (mode === "query") setOutput(parseQuery(input));
-        else if (mode === "build-query") setOutput(buildQuery(input));
-        else {
-          setOutput(JSON.stringify(parseUrlComponents(input), null, 2));
-        }
-      }
+      setOutput(mode === "encode" ? base64Encode(input) : base64Decode(input));
+      setError("");
     } catch (cause) {
       setError(errorMessage(cause));
+      setOutput("");
     }
-    return () => { live = false; };
-  }, [indent, input, mode, sortKeys, type]);
-  const options =
-    type === "json"
-      ? [
-          ["format", "จัดรูปแบบ"],
-          ["validate", "ตรวจ JSON"],
-          ["minify", "ย่อ JSON"],
-          ["view", "ดูเป็นต้นไม้"],
-        ]
-      : type === "yaml"
-        ? [
-            ["json-to-yaml", "JSON → YAML"],
-            ["yaml-to-json", "YAML → JSON"],
-          ]
-        : type === "url"
-          ? [
-              ["encode", "Encode"],
-              ["decode", "Decode"],
-              ["query", "Query → JSON"],
-              ["build-query", "JSON → Query"],
-              ["parse-url", "แยกส่วน URL"],
-            ]
-          : [
-              ["encode", "Encode"],
-              ["decode", "Decode"],
-            ];
+  }, [input, mode]);
+  const choices: Choice[] = [
+    { value: "encode", label: text("เข้ารหัส", "Encode"), compact: text("เข้ารหัส", "Encode") },
+    { value: "decode", label: text("ถอดรหัส", "Decode"), compact: text("ถอดรหัส", "Decode") },
+  ];
   return (
     <TwoCols>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <h2 className="font-bold">{uiText("ข้อมูลต้นฉบับ")}</h2>
-          <Select
+          <ChoiceMenu
+            className="choice-field"
+            label={text("การทำงาน", "Operation")}
             value={mode}
-            onChange={(event) => setMode(event.target.value)}
-          >
-            {options.map(([value, label]) => (
-              <option value={value} key={value}>
-              {uiText(label)}
-              </option>
-            ))}
-          </Select>
+            icon={RefreshCw}
+            choices={choices}
+            onSelect={(value) => setMode(value as "encode" | "decode")}
+          />
         </CardHeader>
         <CardContent className="space-y-3">
-          {type === "json" && mode !== "minify" && <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="size-5 accent-blue-500" checked={sortKeys} onChange={(event) => setSortKeys(event.target.checked)} />{uiText("เรียง key A–Z")}</label>
-            <Field label={uiText("จำนวนช่องว่าง")}><Select value={indent} onChange={(event) => setIndent(Number(event.target.value) as 2 | 4)}><option value={2}>{uiText("2 ช่อง")}</option><option value={4}>{uiText("4 ช่อง")}</option></Select></Field>
-          </div>}
           <Textarea
+            aria-label={text("ข้อความต้นฉบับ", "Source text")}
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={
-              type === "yaml" ? '{ "hello": "world" }' : uiText("วางข้อมูลที่นี่…")
-            }
+            placeholder={text("วางข้อความเพื่อเข้ารหัสหรือถอดรหัส…", "Paste text to encode or decode…")}
           />
         </CardContent>
       </Card>
       <div className="grid gap-3">
         <SafeOutput
-        value={pending ? uiText("กำลังแปลง…") : output}
-        error={error}
-        filename={
-          type === "yaml" && mode === "json-to-yaml"
-            ? "result.yaml"
-            : type === "json" || (type === "yaml" && mode === "yaml-to-json")
-              ? "result.json"
-              : undefined
-        }
+          value={output}
+          error={error}
         />
-        {type === "json" && mode === "validate" && !error && input.trim() && <p role="status" className="rounded-lg border border-cyan-300/25 bg-cyan-300/5 p-3 text-sm text-cyan-100">{uiText("JSON ถูกต้อง")}</p>}
-        {type === "json" && mode === "view" && !error && input.trim() && <JsonTree input={input} />}
       </div>
     </TwoCols>
   );
-}
-
-function JsonTree({ input }: { input: string }) {
-  let value: unknown;
-  try { value = JSON.parse(input) as unknown; }
-  catch { return null; }
-  return <Card><CardHeader><h2 className="font-bold">{uiText("โครงสร้าง JSON")}</h2></CardHeader><CardContent><JsonNode name="root" value={value} depth={0} /></CardContent></Card>;
-}
-
-function JsonNode({ name, value, depth }: { name: string; value: unknown; depth: number }) {
-  if (value !== null && typeof value === "object") {
-    const entries: Array<[string, unknown]> = Array.isArray(value)
-      ? value.map((item, index) => [String(index), item])
-      : Object.entries(value as Record<string, unknown>);
-    return <details className="json-node" open={depth < 2}><summary><code>{name}</code><span>{Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}</span></summary><div className="json-children">{entries.map(([key, item]) => <JsonNode key={key} name={key} value={item} depth={depth + 1} />)}</div></details>;
-  }
-  return <p className="json-leaf"><code>{name}</code><span>{JSON.stringify(value)}</span></p>;
 }
 
 function errorMessage(cause: unknown) {
@@ -570,6 +383,7 @@ function errorMessage(cause: unknown) {
 }
 
 function HashTool() {
+  const { text } = useLanguage();
   const [input, setInput] = useState("");
   const [algorithm, setAlgorithm] = useState<"SHA-256" | "SHA-384" | "SHA-512">(
     "SHA-256",
@@ -580,6 +394,7 @@ function HashTool() {
   const [uuidCount, setUuidCount] = useState(1);
   const [error, setError] = useState("");
   const { config } = useRuntimeConfig();
+  const algorithmChoices: Choice[] = ["SHA-256", "SHA-384", "SHA-512"].map((value) => ({ value, label: value, compact: value }));
   useEffect(() => {
     if (file || sourceMode !== "text") return;
     let live = true;
@@ -603,16 +418,14 @@ function HashTool() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <h2 className="font-bold">{uiText("ข้อความ")}</h2>
-          <Select
+          <ChoiceMenu
+            className="choice-field hash-algorithm-choice"
+            label={text("อัลกอริทึม Hash", "Hash algorithm")}
             value={algorithm}
-            onChange={(event) =>
-              setAlgorithm(event.target.value as typeof algorithm)
-            }
-          >
-            <option>SHA-256</option>
-            <option>SHA-384</option>
-            <option>SHA-512</option>
-          </Select>
+            icon={Hash}
+            choices={algorithmChoices}
+            onSelect={(next) => setAlgorithm(next as typeof algorithm)}
+          />
         </CardHeader>
         <CardContent className="space-y-3">
           <Textarea
@@ -672,6 +485,8 @@ export function ToolWorkspace() {
   const { favorites, toggleFavorite } = usePreferences();
   const { language, text } = useLanguage();
   const { config } = useRuntimeConfig();
+  const legacyRedirect = toolSlug ? legacyTextRouteRedirects[toolSlug] : undefined;
+  if (legacyRedirect) return <Navigate to={legacyRedirect} replace />;
   if (!tool) return <Navigate to="/" replace />;
   const requestedBack = (location.state as { from?: unknown } | null)?.from;
   const backTo = typeof requestedBack === "string" &&
@@ -681,28 +496,15 @@ export function ToolWorkspace() {
   const categoryStyle = categoryStyles[tool.category];
   const content: Record<ToolId, ReactNode> = {
     "text-word-count": <LazyPanel><LazyTextTools toolId="text-word-count" /></LazyPanel>,
-    "text-character-count": <LazyPanel><LazyTextTools toolId="text-character-count" /></LazyPanel>,
-    "text-transformer": <TransformTool />,
-    "text-remove-duplicates": <LazyPanel><LazyTextTools toolId="text-remove-duplicates" /></LazyPanel>,
-    "text-sort-lines": <LazyPanel><LazyTextTools toolId="text-sort-lines" /></LazyPanel>,
-    "text-whitespace": <LazyPanel><LazyTextTools toolId="text-whitespace" /></LazyPanel>,
     "text-find-replace": <LazyPanel><LazyTextTools toolId="text-find-replace" /></LazyPanel>,
-    "text-statistics": <StatisticsTool />,
+    "text-remove-duplicates": <LazyPanel><LazyTextTools toolId="text-remove-duplicates" /></LazyPanel>,
     "text-diff": <DiffTool />,
-    "text-markdown": <LazyPanel><LazyTextTools toolId="text-markdown" /></LazyPanel>,
-    "text-slug": <LazyPanel><LazyTextTools toolId="text-slug" /></LazyPanel>,
-    "text-remove-empty": <LazyPanel><LazyTextTools toolId="text-remove-empty" /></LazyPanel>,
     "text-reverse": <LazyPanel><LazyTextTools toolId="text-reverse" /></LazyPanel>,
     "text-keyboard": <LazyPanel><LazyTextTools toolId="text-keyboard" /></LazyPanel>,
     "text-money": <LazyPanel><LazyTextTools toolId="text-money" /></LazyPanel>,
-    "text-clean": <LazyPanel><LazyTextTools toolId="text-clean" /></LazyPanel>,
-    "timestamp-converter": <TimestampTool />,
     "timezone-converter": <TimezoneTool />,
     "date-calculator": <DateCalculatorTool />,
-    "json-toolkit": <ConverterTool type="json" />,
-    "json-yaml": <ConverterTool type="yaml" />,
-    base64: <ConverterTool type="base64" />,
-    "url-toolkit": <ConverterTool type="url" />,
+    base64: <ConverterTool />,
     "hash-uuid": <HashTool />,
     "pdf-workspace": <PdfTool toolId="merge-pdf" maxFileBytes={config.maxLocalFileBytes} />,
     "pdf-text": <PdfTool toolId="pdf-text" maxFileBytes={config.maxLocalFileBytes} />,
@@ -726,30 +528,25 @@ export function ToolWorkspace() {
     "base64-to-image": <LazyPanel><LazyImagePanel toolId="base64-to-image" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
     "color-picker": <LazyPanel><LazyExtendedPanel tool={toolById.get("color-picker")!} /></LazyPanel>,
     "favicon-generator": <LazyPanel><LazyImagePanel toolId="favicon-generator" maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
+    "api-client": <LazyPanel><LazyApiClient /></LazyPanel>,
     "jwt-decoder": <LazyPanel><LazyExtendedPanel tool={toolById.get("jwt-decoder")!} /></LazyPanel>,
     "regex-tester": <LazyPanel><LazyAdditionalPanel toolId="regex-tester" /></LazyPanel>,
-    "cron-helper": <LazyPanel><LazyAdditionalPanel toolId="cron-helper" /></LazyPanel>,
-    "sql-formatter": <LazyPanel><LazyExtendedPanel tool={toolById.get("sql-formatter")!} /></LazyPanel>,
-    "html-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("html-beautifier")!} /></LazyPanel>,
-    "css-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("css-beautifier")!} /></LazyPanel>,
-    "javascript-beautifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("javascript-beautifier")!} /></LazyPanel>,
-    "html-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("html-minifier")!} /></LazyPanel>,
-    "css-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("css-minifier")!} /></LazyPanel>,
-    "javascript-minifier": <LazyPanel><LazyExtendedPanel tool={toolById.get("javascript-minifier")!} /></LazyPanel>,
-    "csv-json": <LazyPanel><LazyExtendedPanel tool={toolById.get("csv-json")!} /></LazyPanel>,
+    "code-formatter": <LazyPanel><LazyExtendedPanel tool={toolById.get("code-formatter")!} /></LazyPanel>,
     "number-base-converter": <LazyPanel><LazyExtendedPanel tool={toolById.get("number-base-converter")!} /></LazyPanel>,
     "unit-converter": <LazyPanel><LazyAdditionalPanel toolId="unit-converter" /></LazyPanel>,
-    "csv-workspace": <LazyPanel><LazyDataWorkspace maxFileBytes={config.maxLocalFileBytes} /></LazyPanel>,
-    checklist: <LazyPanel><LazyChecklist /></LazyPanel>,
+    "currency-converter": <LazyPanel><LazyEverydayPanel toolId="currency-converter" /></LazyPanel>,
+    "thai-year": <LazyPanel><LazyAdditionalPanel toolId="thai-year" /></LazyPanel>,
     "password-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("password-generator")!} /></LazyPanel>,
     "random-string-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("random-string-generator")!} /></LazyPanel>,
     "qr-generator": <LazyPanel><LazyAdditionalPanel toolId="qr-generator" /></LazyPanel>,
     "lorem-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("lorem-generator")!} /></LazyPanel>,
     "random-number-generator": <LazyPanel><LazyExtendedPanel tool={toolById.get("random-number-generator")!} /></LazyPanel>,
-    "thai-year": <LazyPanel><LazyAdditionalPanel toolId="thai-year" /></LazyPanel>,
-    pomodoro: <LazyPanel><LazyAdditionalPanel toolId="pomodoro" /></LazyPanel>,
+    "random-picker": <LazyPanel><LazyEverydayPanel toolId="random-picker" /></LazyPanel>,
     "split-bill": <LazyPanel><LazyAdditionalPanel toolId="split-bill" /></LazyPanel>,
     "bmi-tdee": <LazyPanel><LazyAdditionalPanel toolId="bmi-tdee" /></LazyPanel>,
+    "loan-calculator": <LazyPanel><LazyEverydayPanel toolId="loan-calculator" /></LazyPanel>,
+    "savings-calculator": <LazyPanel><LazyEverydayPanel toolId="savings-calculator" /></LazyPanel>,
+    "trip-cost-calculator": <LazyPanel><LazyEverydayPanel toolId="trip-cost-calculator" /></LazyPanel>,
   };
   return (
     <div className="mx-auto max-w-7xl">
@@ -800,10 +597,15 @@ export function ToolWorkspace() {
       </header>
       <section className="local-tool-panel">{content[tool.id]}</section>
       <p className="mt-5 text-center text-xs text-muted-foreground">
-        {text(
-          "ข้อมูลในหน้านี้ประมวลผลภายในเบราว์เซอร์และไม่ถูกบันทึก",
-          "Your content is processed in this browser and is not stored.",
-        )}
+        {tool.id === "api-client"
+          ? text(
+            "คำขอจะส่งตรงไปยัง URL ที่คุณระบุเมื่อกดส่ง และ ToolsDice จะไม่บันทึกข้อมูล",
+            "Requests go directly to your chosen URL when you press Send; ToolsDice does not store them.",
+          )
+          : text(
+            "ข้อมูลในหน้านี้ประมวลผลภายในเบราว์เซอร์และไม่ถูกบันทึก",
+            "Your content is processed in this browser and is not stored.",
+          )}
       </p>
     </div>
   );

@@ -1,6 +1,7 @@
 import { uiText } from "@/lib/ui-text";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { Check, Clipboard, Download, GripVertical, LoaderCircle, UploadCloud } from 'lucide-react'
+import { Check, Clipboard, Download, GripVertical, LoaderCircle, Scaling, UploadCloud } from 'lucide-react'
+import { ChoiceMenu, type Choice } from '@/components/ChoiceMenu'
 import { validateLocalFile } from '../../lib/tool-engines'
 
 type ImageToolId = 'image-resize' | 'image-crop' | 'image-compressor' | 'jpg-to-png' | 'png-to-jpg' | 'image-to-webp' | 'webp-to-png' | 'remove-image-metadata' | 'image-to-base64'
@@ -24,6 +25,7 @@ function ImageWorkbench({ toolId, maxFileBytes }: { toolId: ImageToolId; maxFile
   const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, width: 800, height: 800 })
   const [quality, setQuality] = useState(.86)
   const [maxDimension, setMaxDimension] = useState(1920)
+  const compressionDimensionChoices: Choice[] = [1920, 1280, 800].map((value) => ({ value: String(value), label: value + ' px', compact: value + ' px' }))
   const [background, setBackground] = useState('#ffffff')
   const [result, setResult] = useState<{ url: string; blob: Blob; name: string; width: number; height: number } | null>(null)
   const [status, setStatus] = useState<Status>({ working: false, message: '', error: '' })
@@ -196,7 +198,7 @@ function ImageWorkbench({ toolId, maxFileBytes }: { toolId: ImageToolId; maxFile
         </div>
         <Toggle checked={lockRatio} onChange={setLockRatio} label={uiText("ล็อกอัตราส่วนภาพ")} />
       </>}
-      {toolId === 'image-compressor' && <><Field label={uiText("ด้านยาวสูงสุด (px)")}><select value={maxDimension} onChange={(event) => setMaxDimension(Number(event.target.value))}><option value={1920}>1920 px</option><option value={1280}>1280 px</option><option value={800}>800 px</option></select></Field><Field label={`คุณภาพ WebP ${Math.round(quality * 100)}%`}><input type="range" min=".35" max="1" step=".01" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></Field></>}
+      {toolId === 'image-compressor' && <><Field label={uiText("ด้านยาวสูงสุด (px)")}><ChoiceMenu className="choice-field" label={uiText("ด้านยาวสูงสุด (px)")} value={String(maxDimension)} icon={Scaling} choices={compressionDimensionChoices} onSelect={(next) => setMaxDimension(Number(next))} /></Field><Field label={"คุณภาพ WebP " + Math.round(quality * 100) + "%"}><input type="range" min=".35" max="1" step=".01" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></Field></>}
       {toolId === 'image-crop' && <>
         <p className="helper-text">{uiText("ลากบนภาพเพื่อเลือกส่วนที่ต้องการครอบ จับตรงกลางเพื่อย้าย หรือจับจุดมุมเพื่อปรับขนาด")}</p>
         <div

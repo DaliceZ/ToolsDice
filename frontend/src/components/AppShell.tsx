@@ -256,14 +256,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               to="/"
               onClick={closeMobile}
               className={cn(
-                "sidebar-home flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-sm font-semibold",
+                "sidebar-home flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-3",
                 location.pathname === "/" && "sidebar-home-active",
                 sidebarCollapsed && "lg:justify-center lg:px-0",
               )}
               title={sidebarCollapsed ? text("ภาพรวม", "Overview") : undefined}
             >
               <Dice5 aria-hidden="true" size={18} />
-              <span className={cn("truncate", sidebarCollapsed && "lg:hidden")}>
+              <span className={cn("sidebar-primary-label truncate", sidebarCollapsed && "lg:hidden")}>
                 {text("ภาพรวม", "Overview")}
               </span>
             </Link>
@@ -289,7 +289,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       type="button"
                       title={sidebarCollapsed ? categoryName(category, language) : undefined}
                       className={cn(
-                        "sidebar-category-main flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1.5 text-left text-sm font-semibold",
+                        "sidebar-category-main flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-lg px-1.5 py-1.5 text-left",
                         sidebarCollapsed && "lg:flex-none lg:justify-center lg:px-0",
                         activeCategory === category && "text-foreground",
                       )}
@@ -303,7 +303,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <span className={cn("grid size-8 shrink-0 place-items-center rounded-xl", style.icon)}>
                         <Icon size={17} />
                       </span>
-                      <span className={cn("min-w-0 flex-1 truncate", sidebarCollapsed && "lg:hidden")}>
+                      <span className={cn("sidebar-primary-label min-w-0 flex-1 truncate", sidebarCollapsed && "lg:hidden")}>
                         {categoryName(category, language)}
                       </span>
                       <span className={cn("mr-1 text-[11px] font-medium text-muted-foreground", sidebarCollapsed && "lg:hidden")}>

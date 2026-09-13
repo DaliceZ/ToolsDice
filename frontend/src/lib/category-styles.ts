@@ -43,7 +43,6 @@ export const categoryStyles: Record<ToolCategory, CategoryStyle> = {
   "นักพัฒนา": indigo,
   "ตัวสร้าง": indigo,
   "ตัวแปลง": amber,
-  "ข้อมูล": amber,
   "คำนวณ": amber,
   "วันและเวลา": {
     accent: "category-sky-accent",

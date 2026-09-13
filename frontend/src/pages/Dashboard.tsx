@@ -304,7 +304,7 @@ export function Dashboard() {
           <div>
             <span className="section-eyebrow">{text("เลือกให้ตรงกับสิ่งที่ทำ", "Pick what you need")}</span>
             <h2 id="categories-heading" className="mt-1 text-xl font-bold sm:text-2xl">
-              {text("สำรวจ 9 หมวดหมู่", "Explore 9 categories")}
+              {text("สำรวจ 8 หมวดหมู่", "Explore 8 categories")}
             </h2>
           </div>
           <span className="hidden text-sm text-muted-foreground sm:inline">

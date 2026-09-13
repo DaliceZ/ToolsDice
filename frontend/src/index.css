@@ -625,6 +625,12 @@ a {
   transition: color 160ms ease, background-color 160ms ease;
 }
 
+.sidebar-primary-label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .sidebar-home:hover {
   color: #503528;
   background: #f7efe6;
@@ -1806,6 +1812,11 @@ a {
 .choice-menu-swatches { display: flex; flex: 0 0 auto; }
 .choice-menu-swatches i { width: .85rem; height: .85rem; margin-left: -.16rem; border: 1px solid var(--border); border-radius: 50%; }
 .choice-menu-swatches i:first-child { margin-left: 0; }
+.choice-field { width: 100%; min-width: 0; }
+.choice-field .choice-menu-trigger { width: 100%; min-width: 0; justify-content: flex-start; }
+.choice-field .choice-menu-current { flex: 1 1 auto; min-width: 0; max-width: none; text-align: left; }
+.choice-field .choice-menu-chevron { margin-left: auto; }
+.choice-field .choice-menu-popover { right: auto; left: 0; width: max(100%, 12rem); min-width: 100%; }
 .local-tool-panel .pdf-setting-choice { width: 100%; }
 .local-tool-panel .pdf-setting-choice .choice-menu-trigger { width: 100%; min-width: 0; justify-content: flex-start; }
 .local-tool-panel .pdf-setting-choice .choice-menu-current { flex: 1 1 auto; min-width: 0; max-width: none; text-align: left; }

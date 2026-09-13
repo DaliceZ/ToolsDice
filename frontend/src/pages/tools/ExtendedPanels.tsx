@@ -1,13 +1,14 @@
 import { uiText } from "@/lib/ui-text";
 import { useId, useMemo, useState } from 'react'
 import { useLanguage } from '@/lib/language'
-import { Check, Clipboard, Download, FileCode2, Hash, LoaderCircle, RefreshCw, ShieldCheck, Sparkles, UploadCloud } from 'lucide-react'
+import { ChoiceMenu, type Choice } from '@/components/ChoiceMenu'
+import { transformCode as formatSourceCode, type CodeLanguage, type CodeOperation } from '@/lib/tool-engines'
+import { Check, Clipboard, Code2, Download, Hash, LoaderCircle, ShieldCheck, Sparkles, UploadCloud, WandSparkles } from 'lucide-react'
 import type { ToolDefinition } from '../../lib/tool-registry'
-import { objectsToCsv, parseCsv } from './dataUtils'
 
 const textIds = new Set(['word-counter', 'character-counter', 'remove-duplicate-lines', 'sort-lines', 'trim-spaces', 'find-replace', 'text-to-slug', 'remove-empty-lines', 'reverse-text', 'text-statistics'])
-const developerIds = new Set(['jwt-decoder', 'cron-helper', 'sql-formatter', 'html-beautifier', 'css-beautifier', 'javascript-beautifier', 'html-minifier', 'css-minifier', 'javascript-minifier'])
-const converterIds = new Set(['csv-json', 'color-picker', 'number-base-converter'])
+const developerIds = new Set(['jwt-decoder', 'code-formatter'])
+const converterIds = new Set(['color-picker', 'number-base-converter'])
 const generatorIds = new Set(['password-generator', 'random-string-generator', 'lorem-generator', 'random-number-generator'])
 
 export function ExtendedToolPanel({ tool }: { tool: ToolDefinition }) {
@@ -51,31 +52,8 @@ function TextUtility({ kind }: { kind: string }) {
 }
 
 function DeveloperUtility({ kind }: { kind: string }) {
-  if (kind === 'json-validator') return <JsonValidator />
-  if (kind === 'json-viewer') return <JsonViewer />
   if (kind === 'jwt-decoder') return <JwtDecoder />
-  if (kind === 'cron-helper') return <CronHelper />
-  return <CodeTransformer kind={kind} />
-}
-
-function JsonValidator() {
-  const [value, setValue] = useState('{"name":"ToolsDice","privacy":true}')
-  const result = validateJson(value)
-  return <Surface><Editor label="JSON" value={value} onChange={setValue} /><div className={`inline-status ${result.ok ? 'success' : 'error'}`}>{result.ok ? <Check size={17} /> : <FileCode2 size={17} />}<p>{uiText(result.message)}</p></div>{result.ok && <Editor label={uiText("JSON ที่จัดรูปแบบแล้ว")} value={result.output} readOnly action={<CopyButton value={result.output} />} />}</Surface>
-}
-
-function JsonViewer() {
-  const [value, setValue] = useState('{"project":"ToolsDice","categories":["PDF","Text","Image"],"privacy":{"clientSide":true}}')
-  const parsed = validateJson(value)
-  return <Surface><Editor label="JSON" value={value} onChange={setValue} />{parsed.ok ? <div className="json-tree"><JsonNode name="root" value={JSON.parse(value) as unknown} depth={0} /></div> : <div className="inline-status error"><p>{uiText(parsed.message)}</p></div>}</Surface>
-}
-
-function JsonNode({ name, value, depth }: { name: string; value: unknown; depth: number }) {
-  if (value && typeof value === 'object') {
-    const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item] as const) : Object.entries(value as Record<string, unknown>)
-    return <details open={depth < 2}><summary><code>{name}</code><span>{Array.isArray(value) ? `[${entries.length}]` : `{${entries.length}}`}</span></summary><div>{entries.map(([key, item]) => <JsonNode name={key} value={item} depth={depth + 1} key={key} />)}</div></details>
-  }
-  return <p className="json-leaf"><code>{name}</code><span className={value === null ? 'null' : typeof value}>{JSON.stringify(value)}</span></p>
+  return <CodeFormatter />
 }
 
 function JwtDecoder() {
@@ -85,58 +63,62 @@ function JwtDecoder() {
   return <Surface><div className="notice-box warning"><ShieldCheck size={18} /><div><strong>{uiText("Decode ไม่ใช่ Verification")}</strong><p>{uiText("เครื่องมือนี้อ่านข้อมูลเท่านั้น ไม่ตรวจลายเซ็นและไม่ควรใช้ตัดสินความน่าเชื่อถือของ token")}</p></div></div><Editor label="JWT" value={token} onChange={setToken} />{error ? <div className="inline-status error"><p>{uiText(error)}</p></div> : <div className="dual-editor"><Editor label="Header" value={header} readOnly action={<CopyButton value={header} />} /><Editor label="Payload" value={payload} readOnly action={<CopyButton value={payload} />} /></div>}</Surface>
 }
 
-function CronHelper() {
-  const [value, setValue] = useState('0 9 * * 1-5')
-  const result = explainCron(value)
-  const presets = [['ทุก 5 นาที', '*/5 * * * *'], ['ทุกวัน 09:00', '0 9 * * *'], ['จันทร์-ศุกร์ 09:00', '0 9 * * 1-5'], ['วันแรกของเดือน', '0 0 1 * *']]
-  return <Surface><Field label="Cron expression (5 fields)"><input className="code-input" value={value} onChange={(event) => setValue(event.target.value)} /></Field><div className={`inline-status ${result.valid ? 'success' : 'error'}`}><p>{uiText(result.description)}</p></div><div className="preset-grid">{presets.map(([label, cron]) => <button className="secondary-button" type="button" onClick={() => setValue(cron)} key={cron}><span>{uiText(label)}</span><code>{cron}</code></button>)}</div><div className="cron-fields">{['นาที', 'ชั่วโมง', 'วันที่', 'เดือน', 'วันในสัปดาห์'].map((label, index) => <div key={label}><span>{uiText(label)}</span><code>{value.trim().split(/\s+/)[index] ?? '—'}</code></div>)}</div></Surface>
-}
-
-function CodeTransformer({ kind }: { kind: string }) {
-  const { language } = useLanguage()
-  const defaults: Record<string, string> = { 'sql-formatter': 'select id,name from users where active=true order by name;', 'html-beautifier': '<main><h1>ToolsDice</h1><p>Privacy first</p></main>', 'css-beautifier': '.card{display:flex;color:#fff;background:#111}', 'javascript-beautifier': 'function hello(name){const text="Hello "+name;return text;}', 'html-minifier': '<main>\n  <!-- note -->\n  <h1>ToolsDice</h1>\n</main>', 'css-minifier': '.card {\n color: #fff;\n padding: 16px;\n}', 'javascript-minifier': 'function add(a, b) {\n  // add numbers\n  return a + b;\n}' }
-  const [input, setInput] = useState(defaults[kind] ?? '')
-  const output = transformCode(kind, input)
-  const locale = language === 'en' ? 'en-US' : 'th-TH'
-  return <Surface><div className="dual-editor code-editors"><Editor label={uiText("ต้นฉบับ")} value={input} onChange={setInput} /><Editor label={uiText("ผลลัพธ์")} value={output} readOnly action={<CopyButton value={output} />} /></div><div className="tool-actions"><span className="helper-text">{input.length.toLocaleString(locale)} → {output.length.toLocaleString(locale)} {uiText("ตัวอักษร")}</span><DownloadText value={output} filename={`${kind}.txt`} /></div></Surface>
+function CodeFormatter() {
+  const { text } = useLanguage();
+  const [language, setLanguage] = useState<CodeLanguage>("javascript");
+  const [operation, setOperation] = useState<CodeOperation>("format");
+  const [input, setInput] = useState("");
+  const [output, setOutput] = useState("");
+  const [error, setError] = useState("");
+  const languageChoices: Choice[] = [
+    { value: "json", label: "JSON", compact: "JSON", detail: text("ข้อมูลแบบ JSON", "Structured data") },
+    { value: "javascript", label: "JavaScript", compact: "JS", detail: text("โค้ด JavaScript", "JavaScript source") },
+    { value: "html", label: "HTML", compact: "HTML", detail: text("โครงหน้าเว็บ", "Markup") },
+    { value: "css", label: "CSS", compact: "CSS", detail: text("สไตล์หน้าเว็บ", "Stylesheets") },
+    { value: "sql", label: "SQL", compact: "SQL", detail: text("คำสั่งฐานข้อมูล", "Database queries") },
+  ];
+  const operationChoices: Choice[] = [
+    { value: "format", label: text("จัดรูปแบบ", "Format"), compact: text("จัดรูปแบบ", "Format") },
+    { value: "minify", label: text("ย่อโค้ด", "Minify"), compact: text("ย่อโค้ด", "Minify") },
+  ];
+  const placeholders: Record<CodeLanguage, string> = {
+    json: '{"name":"ToolsDice","active":true,"items":[1,2,3]}',
+    javascript: 'function greet(name){const message="Hello, "+name;return message;}',
+    html: '<main><h1>ToolsDice</h1><p>Local tools</p></main>',
+    css: '.card{display:flex;color:#5b3427;padding:16px}',
+    sql: 'select id,name from users where active=true order by name;',
+  };
+  const run = () => {
+    try {
+      setOutput(formatSourceCode(input, language, operation));
+      setError("");
+    } catch (cause) {
+      setOutput("");
+      setError(cause instanceof Error ? cause.message : text("จัดรูปแบบไม่สำเร็จ", "Could not format this source."));
+    }
+  };
+  const onLanguageSelect = (next: string) => setLanguage(next as CodeLanguage);
+  return <Surface>
+    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+      <Field label={text("ภาษา", "Language")}><ChoiceMenu className="choice-field" label={text("ภาษา", "Language")} value={language} icon={Code2} choices={languageChoices} onSelect={onLanguageSelect} /></Field>
+      <Field label={text("การทำงาน", "Operation")}><ChoiceMenu className="choice-field" label={text("การทำงาน", "Operation")} value={operation} icon={WandSparkles} choices={operationChoices} onSelect={(value) => setOperation(value as CodeOperation)} /></Field>
+    </div>
+    <div className="dual-editor code-editors">
+      <Editor label={text("ต้นฉบับ", "Source code")} value={input} onChange={(value) => { setInput(value); setOutput(""); setError(""); }} placeholder={placeholders[language]} />
+      <Editor label={text("ผลลัพธ์", "Output")} value={output} readOnly action={<CopyButton value={output} />} placeholder={text("ผลลัพธ์จะแสดงตรงนี้", "Formatted output will appear here")} />
+    </div>
+    {error && <div className="inline-status error" role="alert"><p>{text(error, error)}</p></div>}
+    <button className="primary-button full" type="button" disabled={!input.trim()} onClick={run}>
+      <WandSparkles size={18} /> {operation === "minify" ? text("ย่อโค้ด", "Minify") : text("จัดรูปแบบ", "Format")}
+    </button>
+    <p className="helper-text">{text("ตัวอย่างเป็น placeholder เท่านั้น โค้ดที่วางจะประมวลผลในเบราว์เซอร์", "Examples are placeholders. Pasted code is processed in your browser.")}</p>
+  </Surface>;
 }
 
 function ConverterUtility({ kind }: { kind: string }) {
   if (kind === 'color-converter' || kind === 'color-picker') return <ColorConverter />
   if (kind === 'number-base-converter') return <NumberBaseConverter />
-  return <TextConverter kind={kind} />
-}
-
-function TextConverter({ kind }: { kind: string }) {
-  const { language } = useLanguage()
-  const defaults: Record<string, string> = { 'json-to-yaml': '{"name":"ToolsDice","privacy":true,"categories":["PDF","Image"]}', 'yaml-to-json': 'name: ToolsDice\nprivacy: true\ncategories:\n  - PDF\n  - Image', 'csv-to-json': 'name,category,active\nMerge PDF,PDF,true\nJSON Formatter,Developer,true', 'json-to-csv': '[{"name":"Merge PDF","category":"PDF"},{"name":"JSON Formatter","category":"Developer"}]', 'base64-encode': language === 'th' ? 'สวัสดี ToolsDice' : 'Hello ToolsDice', 'base64-decode': language === 'th' ? '4Liq4Lin4Lix4Liq4LiU4Li1IFRvb2xzRGljZQ==' : 'SGVsbG8gVG9vbHNEaWNl', 'url-encode': language === 'th' ? 'ค้นหา PDF & รูปภาพ' : 'Search PDF & images', 'url-decode': language === 'th' ? '%E0%B8%84%E0%B9%89%E0%B8%99%E0%B8%AB%E0%B8%B2%20PDF%20%26%20%E0%B8%A3%E0%B8%B9%E0%B8%9B%E0%B8%A0%E0%B8%B2%E0%B8%9E' : 'Search%20PDF%20%26%20images' }
-  const [input, setInput] = useState(() => defaults[kind] ?? '')
-  const [mode, setMode] = useState<'csv-to-json' | 'json-to-csv'>('csv-to-json')
-  const [output, setOutput] = useState('')
-  const [error, setError] = useState('')
-  const [working, setWorking] = useState(false)
-  const convert = async () => {
-    setWorking(true); setError('')
-    try {
-      let result = ''
-      if (kind === 'csv-json' && mode === 'csv-to-json') result = JSON.stringify(csvToObjects(input), null, 2)
-      else if (kind === 'csv-json' && mode === 'json-to-csv') {
-        const parsed = JSON.parse(input) as unknown
-        if (!Array.isArray(parsed) || !parsed.every((row) => row && typeof row === 'object' && !Array.isArray(row))) throw new Error('JSON ต้องเป็น array of objects เช่น [{"name":"Ada"}]')
-        result = objectsToCsv(parsed as Record<string, unknown>[])
-      }
-      else if (kind === 'json-to-yaml') { const { stringify } = await import('yaml'); result = stringify(JSON.parse(input) as unknown) }
-      else if (kind === 'yaml-to-json') { const { parse } = await import('yaml'); result = JSON.stringify(parse(input) as unknown, null, 2) }
-      else if (kind === 'csv-to-json') result = JSON.stringify(csvToObjects(input), null, 2)
-      else if (kind === 'json-to-csv') { const parsed = JSON.parse(input) as unknown; if (!Array.isArray(parsed)) throw new Error('JSON ต้องเป็น array'); result = objectsToCsv(parsed as Record<string, unknown>[]) }
-      else if (kind === 'base64-encode') result = bytesToBase64(new TextEncoder().encode(input))
-      else if (kind === 'base64-decode') result = new TextDecoder().decode(base64ToBytes(input.trim()))
-      else if (kind === 'url-encode') result = encodeURIComponent(input)
-      else if (kind === 'url-decode') result = decodeURIComponent(input)
-      setOutput(result)
-    } catch (reason) { setOutput(''); setError(messageOf(reason, 'ไม่สามารถแปลงข้อมูลได้')) } finally { setWorking(false) }
-  }
-  return <Surface>{kind === 'csv-json' && <div className="field-grid"><Field label={uiText("ทิศทาง")}><select value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}><option value="csv-to-json">CSV → JSON</option><option value="json-to-csv">JSON → CSV</option></select></Field></div>}<Editor label={uiText("ข้อมูลต้นฉบับ")} value={input} onChange={setInput} /><button className="primary-button full" type="button" disabled={working} onClick={convert}>{working ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={18} />} {uiText("แปลงข้อมูล")}</button>{error && <div className="inline-status error" role="alert"><p>{error}</p></div>}{output && <Editor label={uiText("ผลลัพธ์")} value={output} readOnly action={<CopyButton value={output} />} />}</Surface>
+  return null;
 }
 
 function ColorConverter() {
@@ -149,9 +131,15 @@ function ColorConverter() {
 function NumberBaseConverter() {
   const [base, setBase] = useState(10)
   const [value, setValue] = useState('255')
+  const baseChoices: Choice[] = [
+    { value: "2", label: "Binary (2)", compact: "Binary (2)" },
+    { value: "8", label: "Octal (8)", compact: "Octal (8)" },
+    { value: "10", label: "Decimal (10)", compact: "Decimal (10)" },
+    { value: "16", label: "Hexadecimal (16)", compact: "Hex (16)" },
+  ]
   let parsed: bigint | null = null
   try { parsed = parseBigIntBase(value, base) } catch { parsed = null }
-  return <Surface><div className="field-grid two"><Field label={uiText("ฐานข้อมูลเข้า")}><select value={base} onChange={(event) => setBase(Number(event.target.value))}><option value="2">Binary (2)</option><option value="8">Octal (8)</option><option value="10">Decimal (10)</option><option value="16">Hexadecimal (16)</option></select></Field><Field label={uiText("ค่า")}><input className="code-input" value={value} onChange={(event) => setValue(event.target.value)} /></Field></div>{parsed === null ? <div className="inline-status error"><p>{uiText("ค่าที่กรอกไม่ถูกต้องสำหรับฐาน ")}{base}</p></div> : <section className="base-results output-panel" aria-live="polite" aria-label={uiText("ค่าที่แปลงแล้ว")}>{[[2, 'Binary'], [8, 'Octal'], [10, 'Decimal'], [16, 'Hexadecimal']].map(([target, label]) => <div className="base-result-row" key={target}><span>{label}</span><code>{parsed!.toString(Number(target)).toUpperCase()}</code><CopyButton value={parsed!.toString(Number(target)).toUpperCase()} /></div>)}</section>}</Surface>
+  return <Surface><div className="field-grid two"><Field label={uiText("ฐานข้อมูลเข้า")}><ChoiceMenu className="choice-field" label={uiText("ฐานข้อมูลเข้า")} value={String(base)} icon={Hash} choices={baseChoices} onSelect={(next) => setBase(Number(next))} /></Field><Field label={uiText("ค่า")}><input className="code-input" value={value} onChange={(event) => setValue(event.target.value)} /></Field></div>{parsed === null ? <div className="inline-status error"><p>{uiText("ค่าที่กรอกไม่ถูกต้องสำหรับฐาน ")}{base}</p></div> : <section className="base-results output-panel" aria-live="polite" aria-label={uiText("ค่าที่แปลงแล้ว")}>{[[2, 'Binary'], [8, 'Octal'], [10, 'Decimal'], [16, 'Hexadecimal']].map(([target, label]) => <div className="base-result-row" key={target}><span>{label}</span><code>{parsed!.toString(Number(target)).toUpperCase()}</code><CopyButton value={parsed!.toString(Number(target)).toUpperCase()} /></div>)}</section>}</Surface>
 }
 
 function GeneratorUtility({ kind }: { kind: string }) {
@@ -213,11 +201,11 @@ type TextStats = ReturnType<typeof textStats>
 function Metrics({ stats }: { stats: TextStats }) { const { language } = useLanguage(); return <div className="stat-grid"><OutputMetric label={uiText("ตัวอักษร")} value={String(stats.characters)} /><OutputMetric label={uiText("ไม่รวมช่องว่าง")} value={String(stats.noSpaces)} /><OutputMetric label={uiText("คำ")} value={String(stats.words)} /><OutputMetric label={uiText("บรรทัด")} value={String(stats.lines)} /><OutputMetric label={uiText("ย่อหน้า")} value={String(stats.paragraphs)} /><OutputMetric label={uiText("เวลาอ่าน")} value={`${stats.readingMinutes} ${language === 'en' ? 'min' : 'นาที'}`} /></div> }
 function Surface({ children }: { children: React.ReactNode }) { return <div className="tool-surface extended-surface">{children}</div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{uiText(label)}</span>{children}</label> }
-function Editor({ label, value, onChange, readOnly, action }: { label: string; value: string; onChange?: (value: string) => void; readOnly?: boolean; action?: React.ReactNode }) {
+function Editor({ label, value, onChange, readOnly, action, placeholder }: { label: string; value: string; onChange?: (value: string) => void; readOnly?: boolean; action?: React.ReactNode; placeholder?: string }) {
   const id = useId()
   return <div className={readOnly ? "editor output-editor" : "editor"}>
     <div className="editor-heading"><label htmlFor={id}>{uiText(label)}</label>{action && <div className="editor-actions">{action}</div>}</div>
-    <textarea id={id} aria-label={uiText(label)} value={value} readOnly={readOnly} onChange={(event) => onChange?.(event.target.value)} />
+    <textarea id={id} aria-label={uiText(label)} value={value} placeholder={placeholder} readOnly={readOnly} onChange={(event) => onChange?.(event.target.value)} />
   </div>
 }
 function Output({ value, copy }: { value: string; copy?: boolean }) { return <div className="result-box output-panel"><span>{uiText("ผลลัพธ์")}{copy && <CopyButton value={value} />}</span><p className="break-all">{value}</p></div> }
@@ -230,29 +218,7 @@ function DownloadText({ value, filename }: { value: string; filename: string }) 
 
 function textStats(value: string) { const words = value.trim() ? value.trim().split(/\s+/u).length : 0; return { characters: [...value].length, noSpaces: [...value.replace(/\s/g, '')].length, words, lines: value ? value.split(/\r?\n/).length : 0, paragraphs: value.trim() ? value.trim().split(/\n\s*\n/).length : 0, readingMinutes: Math.max(0, Math.ceil(words / 220)) } }
 function countOccurrences(value: string, needle: string, sensitive: boolean) { if (!needle) return 0; const source = sensitive ? value : value.toLowerCase(); const find = sensitive ? needle : needle.toLowerCase(); let count = 0; let cursor = 0; while ((cursor = source.indexOf(find, cursor)) >= 0) { count += 1; cursor += Math.max(1, find.length) } return count }
-function validateJson(value: string) { try { const parsed = JSON.parse(value) as unknown; return { ok: true as const, output: JSON.stringify(parsed, null, 2), message: 'JSON ถูกต้อง' } } catch (reason) { const message = messageOf(reason, 'JSON ไม่ถูกต้อง'); const position = /position (\d+)/.exec(message)?.[1]; const index = position ? Number(position) : -1; const prefix = index >= 0 ? value.slice(0, index) : ''; const line = prefix.split('\n').length; const column = prefix.length - prefix.lastIndexOf('\n'); return { ok: false as const, output: '', message: `${message}${index >= 0 ? ` · บรรทัด ${line}, คอลัมน์ ${column}` : ''}` } } }
 function decodeBase64Url(value: string) { const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '='); return new TextDecoder().decode(base64ToBytes(base64)) }
-function explainCron(value: string) {
-  const parts = value.trim().split(/\s+/)
-  if (parts.length !== 5) return { valid: false, description: 'Cron ต้องมี 5 ช่อง: นาที ชั่วโมง วันที่ เดือน วันในสัปดาห์' }
-  if (!parts.every((part) => /^[\d*/?,-]+$/.test(part))) return { valid: false, description: 'พบอักขระที่ไม่รองรับใน cron expression' }
-  const [minute, hour, day, month, weekday] = parts
-  const time = hour.padStart(2, '0') + ':' + minute.padStart(2, '0')
-  let description = 'เวลา ' + time + ' ทุกวัน'
-  if (minute.startsWith('*/')) description = 'ทุก ' + minute.slice(2) + ' นาที'
-  else if (weekday === '1-5') description = 'ทุกวันจันทร์ถึงศุกร์ เวลา ' + time
-  else if (day !== '*') description = 'วันที่ ' + day + ' ของเดือน เวลา ' + time
-  else if (month !== '*') description = 'ในเดือน ' + month + ' เวลา ' + time
-  else if (weekday !== '*') description = 'ในวันลำดับ ' + weekday + ' เวลา ' + time
-  return { valid: true, description }
-}
-function transformCode(kind: string, value: string) { if (kind === 'sql-formatter') return formatSql(value); if (kind === 'html-beautifier') return beautifyHtml(value); if (kind === 'css-beautifier') return beautifyCss(value); if (kind === 'javascript-beautifier') return beautifyJs(value); if (kind === 'html-minifier') return value.replace(/<!--[^]*?-->/g, '').replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ').trim(); if (kind === 'css-minifier') return value.replace(/\/\*[^]*?\*\//g, '').replace(/\s*([{}:;,])\s*/g, '$1').replace(/;}/g, '}').trim(); return value.replace(/\/\*[^]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s+/g, ' ').replace(/\s*([{}();,:+*=<>])\s*/g, '$1').trim() }
-function formatSql(value: string) { const keywords = ['SELECT', 'FROM', 'WHERE', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'JOIN', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'AND', 'OR']; let output = value.replace(/\s+/g, ' ').trim(); for (const keyword of keywords) output = output.replace(new RegExp(`\\b${keyword.replace(' ', '\\s+')}\\b`, 'gi'), (match) => `${['AND', 'OR'].includes(keyword) ? '\n  ' : '\n'}${match.toUpperCase()} `); return output.trim().replace(/,\s*/g, ',\n  ') }
-function beautifyHtml(value: string) { const tokens = value.replace(/>\s*</g, '><').split(/(?=<)|(?<=>)/).filter((token) => token.trim()); let depth = 0; return tokens.map((token) => { const clean = token.trim(); if (/^<\//.test(clean)) depth = Math.max(0, depth - 1); const line = `${'  '.repeat(depth)}${clean}`; if (/^<[^!/][^>]*[^/]>/i.test(clean) && !/^<(meta|link|img|input|br|hr)\b/i.test(clean) && !clean.includes('</')) depth += 1; return line }).join('\n') }
-function beautifyCss(value: string) { return value.replace(/\s*{\s*/g, ' {\n  ').replace(/;\s*/g, ';\n  ').replace(/\s*}\s*/g, '\n}\n').replace(/\n\s*\n/g, '\n').trim() }
-function beautifyJs(value: string) { let depth = 0; return value.replace(/\s*{\s*/g, ' {\n').replace(/;\s*/g, ';\n').replace(/\s*}\s*/g, '\n}\n').split('\n').map((line) => { const clean = line.trim(); if (clean.startsWith('}')) depth = Math.max(0, depth - 1); const output = `${'  '.repeat(depth)}${clean}`; if (clean.endsWith('{')) depth += 1; return output }).filter(Boolean).join('\n') }
-function csvToObjects(value: string) { const rows = parseCsv(value); const headers = rows[0] ?? []; return rows.slice(1).filter((row) => row.some((cell) => cell !== '')).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']))) }
-function bytesToBase64(bytes: Uint8Array) { let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary) }
 function base64ToBytes(value: string) { const binary = atob(value.replace(/\s+/g, '')); return Uint8Array.from(binary, (char) => char.charCodeAt(0)) }
 function normalizeHex(value: string) { const clean = value.trim().replace('#', ''); if (/^[\da-f]{3}$/i.test(clean)) return `#${clean.split('').map((char) => char + char).join('')}`; return /^[\da-f]{6}$/i.test(clean) ? `#${clean}` : '#000000' }
 function hexToRgb(hex: string) { const value = Number.parseInt(hex.slice(1), 16); return { r: value >> 16, g: value >> 8 & 255, b: value & 255 } }

@@ -15,7 +15,7 @@ describe('API', () => {
   it('returns all enabled tools', async () => {
     const response = await createApp().handle(new Request('http://localhost/api/v1/config'))
     const body = await response.json()
-    expect(body.data.enabledToolIds).toHaveLength(70)
+    expect(body.data.enabledToolIds).toHaveLength(52)
     expect(body.data.maxLocalFileBytes).toBeGreaterThan(0)
   })
 })

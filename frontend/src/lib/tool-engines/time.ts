@@ -1,15 +1,3 @@
-export function parseTimestamp(input: string): Date {
-  const trimmed = input.trim();
-  const numeric = Number(trimmed);
-  const date =
-    trimmed && Number.isFinite(numeric)
-      ? new Date(Math.abs(numeric) < 100_000_000_000 ? numeric * 1000 : numeric)
-      : new Date(trimmed);
-  if (!trimmed || Number.isNaN(date.getTime()))
-    throw new Error("รูปแบบวันเวลาหรือ timestamp ไม่ถูกต้อง");
-  return date;
-}
-
 export function formatInTimeZone(date: Date, timeZone: string, locale = "th-TH"): string {
   if (!Number.isFinite(date.getTime())) throw new Error("วันเวลาที่ระบุไม่ถูกต้อง");
   try {

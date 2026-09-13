@@ -120,11 +120,13 @@ test("PDF merge can reorder pages across source files", async ({ page }) => {
     mimeType: "application/pdf",
     buffer: Buffer.from(await firstPdf.save()),
   });
+  await expect(page.locator(".sortable-file-list .sortable-item")).toHaveCount(1);
   await fileInput.setInputFiles({
     name: "second-layout.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from(await secondPdf.save()),
   });
+  await expect(page.locator(".sortable-file-list .sortable-item")).toHaveCount(2);
   await page.getByRole("checkbox", { name: "Arrange pages before merging" }).check();
 
   const cards = page.locator(".merge-page-tile");
@@ -199,11 +201,11 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
     data: { appName: string; enabledToolIds: string[] };
   };
   expect(configEnvelope.data.appName).toBe("ToolsDice");
-  expect(configEnvelope.data.enabledToolIds).toContain("checklist");
+  expect(configEnvelope.data.enabledToolIds).toContain("api-client");
 
   await expect(page.getByRole("heading", { name: "ToolsDice", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Explore 9 categories/ })).toBeVisible();
-  await expect(page.locator(".category-overview-grid a[href^='/categories/']")).toHaveCount(9);
+  await expect(page.getByRole("heading", { name: /Explore 8 categories/ })).toBeVisible();
+  await expect(page.locator(".category-overview-grid a[href^='/categories/']")).toHaveCount(8);
   await expect(page.getByText("All tools", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Recently used")).toHaveCount(0);
   await expect(page.locator(".app-topbar .portfolio-link")).toBeVisible();
@@ -237,6 +239,21 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
 
   const sidebar = page.getByRole("complementary", { name: "Tools navigation" });
   await expect(sidebar.locator(".sidebar-heading")).toHaveCount(0);
+  const sidebarLabelStyles = await page.locator("#tools-sidebar").evaluate((element) => {
+    const readStyle = (selector: string) => {
+      const label = element.querySelector<HTMLElement>(selector);
+      if (!label) return null;
+      const style = getComputedStyle(label);
+      return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight };
+    };
+    return {
+      overview: readStyle(".sidebar-home .sidebar-primary-label"),
+      category: readStyle(".sidebar-category-main .sidebar-primary-label"),
+    };
+  });
+  expect(sidebarLabelStyles.overview).not.toBeNull();
+  expect(sidebarLabelStyles.category).not.toBeNull();
+  expect(sidebarLabelStyles.category).toEqual(sidebarLabelStyles.overview);
   const overviewGutter = await page.locator(".dashboard-page").evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).paddingInlineStart),
   );
@@ -262,9 +279,9 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
 
     const textCategory = sidebar.getByRole("button", { name: /^Text\s+\d+$/ });
     await textCategory.click();
-    await expect(sidebar.getByRole("link", { name: "Word Counter" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "Word & Character Counter" })).toBeVisible();
     await expect(sidebar.locator("a[href^='/categories/']")).toHaveCount(0);
-    await sidebar.getByRole("link", { name: "Word Counter" }).click();
+    await sidebar.getByRole("link", { name: "Word & Character Counter" }).click();
     await expect(page).toHaveURL(/\/tools\/text-word-count$/);
     const sidebarBack = page.getByRole("link", { name: "Back to overview" });
     await expect(sidebarBack).toBeVisible();
@@ -294,21 +311,44 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
   await expect.poll(() => page.locator(".category-page").evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).paddingInlineStart),
   )).toBeGreaterThanOrEqual(8);
-  await expect(page.getByRole("link", { name: "Open Word Counter" })).toBeVisible();
-  await page.getByRole("link", { name: "Open Word Counter" }).click();
+  const textCards = page.locator(".category-page .tool-card");
+  await expect(textCards).toHaveCount(7);
+  const textRoutes = await textCards.evaluateAll((items) =>
+    items.map((item) => item.querySelector<HTMLAnchorElement>("a[href]")?.getAttribute("href")?.replace("/tools/", "")),
+  );
+  expect(textRoutes).toEqual([
+    "text-keyboard",
+    "text-find-replace",
+    "text-diff",
+    "text-money",
+    "text-reverse",
+    "text-word-count",
+    "text-remove-duplicates",
+  ]);
+  await expect(page.getByRole("link", { name: "Open Word & Character Counter" })).toBeVisible();
+  await page.getByRole("link", { name: "Open Word & Character Counter" }).click();
   await expect(page).toHaveURL(/\/tools\/text-word-count$/);
   const categoryBack = page.getByRole("link", { name: "Back to Text" });
   await expect(categoryBack).toBeVisible();
   await categoryBack.click();
   await expect(page).toHaveURL(/\/categories\/text$/);
+  await page.goto("/tools/text-character-count");
+  await expect(page).toHaveURL(/\/tools\/text-word-count$/);
+  await page.goto("/tools/text-whitespace");
+  await expect(page).toHaveURL(/\/categories\/text$/);
+  await expect(page.locator(".category-page .tool-card")).toHaveCount(7);
+  await page.goto("/tools/text-remove-duplicates");
+  await page.getByPlaceholder("Paste one item per line…").fill("apple\nbanana\napple");
+  await expect(page.getByLabel("Text without duplicate lines")).toHaveValue("apple\nbanana");
+  await expect(page.getByText("1 duplicate line removed; original order is preserved.")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect(page.getByRole("link", { name: "Back to overview" })).toBeInViewport();
 
   await page.goto("/");
   await page.getByRole("button", { name: "Search tools" }).click();
   const search = page.getByRole("combobox", { name: "Search tools" });
-  await search.fill("JSON");
-  await expect(page.getByRole("option", { name: /JSON Toolkit/ })).toBeVisible();
+  await search.fill("API");
+  await expect(page.getByRole("option", { name: /API Request Builder/ })).toBeVisible();
   const searchTransition = await page.locator(".search-launcher").evaluate((element) => ({
     properties: getComputedStyle(element).transitionProperty,
     duration: getComputedStyle(element).transitionDuration,
@@ -328,12 +368,9 @@ test("overview, category navigation, autocomplete, and local tools work in Engli
   }
   await expect(expandedSearch).toHaveCount(0);
   await page.getByRole("button", { name: "Search tools" }).click();
-  await page.getByRole("option", { name: /JSON Toolkit/ }).click();
-  await expect(page).toHaveURL(/\/tools\/json-toolkit$/);
-  await page.getByPlaceholder("Paste your data here…").fill('{"ok":true}');
-  await expect(page.getByLabel("Result")).toHaveValue(/"ok": true/);
-  await page.getByRole("combobox").first().selectOption("validate");
-  await expect(page.getByRole("status").filter({ hasText: "Valid JSON" })).toBeVisible();
+  await page.getByRole("option", { name: /API Request Builder/ }).click();
+  await expect(page).toHaveURL(/\/tools\/api-client$/);
+  await expect(page.getByRole("heading", { name: "Build an API request" })).toBeVisible();
 });
 
 test("mobile category cards keep space between icons and labels, with the menu before the brand", async ({ page }) => {
@@ -356,10 +393,10 @@ test("mobile category cards keep space between icons and labels, with the menu b
 
 test("favorites, themes, and language menus keep all preferences local", async ({ page }) => {
   await page.goto("/categories/developer");
-  await page.getByRole("button", { name: "Add to favorites: JSON Toolkit" }).click();
+  await page.getByRole("button", { name: "Add to favorites: API Request Builder" }).click();
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Favorites" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /JSON Toolkit/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /API Request Builder/ })).toBeVisible();
 
   const language = page.getByRole("button", { name: "Language: English" });
   await language.click();
@@ -368,7 +405,7 @@ test("favorites, themes, and language menus keep all preferences local", async (
   await page.getByRole("menuitemradio").nth(0).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "th");
   await expect.poll(() => page.locator("body").evaluate((element) => getComputedStyle(element).fontFamily)).toContain("Sarabun");
-  await expect(page.getByRole("heading", { name: /สำรวจ 9 หมวดหมู่/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /สำรวจ 8 หมวดหมู่/ })).toBeVisible();
   await page.getByRole("button", { name: "เปลี่ยนภาษา: ไทย" }).click();
   await page.getByRole("menuitemradio", { name: "English" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -413,34 +450,56 @@ test("favorites, themes, and language menus keep all preferences local", async (
   await expect(page.locator(".choice-menu-popover")).toHaveCount(0);
 });
 
-test("Checklist stays in memory, stays English, and exports only on request", async ({ page }) => {
-  const nonGetRequests: string[] = [];
-  page.on("request", (request) => {
-    if (request.method() !== "GET" && request.method() !== "HEAD") nonGetRequests.push(request.method());
+test("API request builder waits for an explicit send and keeps credentials in page memory", async ({ page }) => {
+  const sent: Array<{ method: string; url: string; body: string | null; headers: Record<string, string> }> = [];
+  await page.route("https://api.example.test/**", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type",
+        },
+      });
+      return;
+    }
+    sent.push({
+      method: route.request().method(),
+      url: route.request().url(),
+      body: route.request().postData(),
+      headers: await route.request().allHeaders(),
+    });
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ saved: true }),
+    });
   });
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto("/tools/checklist");
-  await page.getByLabel("New item").fill("Homework");
-  await page.getByRole("button", { name: "Add item" }).click();
-  await expect(page.getByText("Homework")).toBeVisible();
+  await page.goto("/tools/api-client");
+  await page.getByLabel("URL", { exact: true }).fill("https://api.example.test/items");
+  await page.getByLabel("Parameter name 1").fill("tag");
+  await page.getByRole("region", { name: "Query Params" }).getByPlaceholder("Value").fill("local only until send");
+  await page.getByRole("button", { name: "HTTP method: GET" }).click();
+  await page.getByRole("menuitemradio", { name: "POST" }).click();
+  await page.getByRole("button", { name: "Body type: No body" }).click();
+  await page.getByRole("menuitemradio", { name: "JSON" }).click();
+  await page.getByPlaceholder('{\n  "name": "ToolsDice"\n}').fill('{"hello":"world"}');
 
-  const storageValues = await page.evaluate(() =>
-    Object.entries(localStorage).map(([key, value]) => [key, value]),
-  );
-  expect(
-    storageValues.every(
-      ([key, value]) =>
-        ["tfd:favorites", "tfd:language", "tfd:language-selected", "tfd:theme"].includes(key as string) &&
-        !String(value).includes("Homework"),
-    ),
-  ).toBe(true);
-  expect(nonGetRequests).toEqual([]);
-  await expect(page.getByRole("button", { name: "Export JSON" })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  expect(sent).toEqual([]);
+  await page.getByRole("button", { name: "Send request" }).click();
+  await expect(page.getByText("201 Created")).toBeVisible();
+  expect(sent).toHaveLength(1);
+  expect(sent[0].method).toBe("POST");
+  expect(new URL(sent[0].url).searchParams.get("tag")).toBe("local only until send");
+  expect(sent[0].body).toBe('{"hello":"world"}');
+  expect(sent[0].headers.cookie).toBeUndefined();
 
-  const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export JSON" }).click();
-  expect((await download).suggestedFilename()).toBe("toolsdice-checklist.json");
+  await page.reload();
+  await expect(page.getByLabel("URL", { exact: true })).toHaveValue("");
+  expect(sent).toHaveLength(1);
 });
 
 test("PDF previews, draggable page ordering, live image edits, and result hierarchy work", async ({ page }) => {
@@ -607,7 +666,7 @@ test("PDF previews, draggable page ordering, live image edits, and result hierar
   await expect(page.locator(".day-difference-values strong").nth(1)).toHaveText("1");
 
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto("/tools/text-whitespace");
+  await page.goto("/tools/text-reverse");
   const textWidths = await page.locator(".workspace-two-col").evaluate((element) =>
     Array.from(element.children, (child) => child.getBoundingClientRect().width),
   );
@@ -721,7 +780,7 @@ test("copy only runs from the copy button, never from the output header", async 
     });
   });
   const count = () => page.evaluate(() => (window as unknown as { getCopyWriteCount: () => number }).getCopyWriteCount());
-  await page.goto("/tools/sql-formatter");
+  await page.goto("/tools/code-formatter");
   const output = page.locator(".output-editor").first();
   await expect(output).toBeVisible();
   const heading = output.locator(".editor-heading");
@@ -732,17 +791,6 @@ test("copy only runs from the copy button, never from the output header", async 
   await output.getByRole("button", { name: "Copy" }).click();
   await expect.poll(count).toBe(1);
 
-  await page.goto("/tools/csv-workspace");
-  await page.locator(".data-mode-picker select").selectOption("table-to-json");
-  const dataOutput = page.locator(".output-editor");
-  await expect(dataOutput).toBeVisible();
-  const dataHeading = dataOutput.locator(".editor-heading");
-  const dataBox = await dataHeading.boundingBox();
-  expect(dataBox).not.toBeNull();
-  await page.mouse.click(dataBox!.x + Math.min(dataBox!.width * .55, dataBox!.width - 80), dataBox!.y + dataBox!.height / 2);
-  await expect.poll(count).toBe(0);
-  await dataOutput.getByRole("button", { name: "Copy" }).click();
-  await expect.poll(count).toBe(1);
 });
 
 test("mobile drawer, custom menus, keyboard access, reduced motion, and narrow layouts work", async ({ page }) => {
@@ -789,7 +837,7 @@ test("mobile drawer, custom menus, keyboard access, reduced motion, and narrow l
   );
   expect(animationName).toBe("none");
 
-  for (const route of ["/", "/categories/pdf", "/categories/text", "/categories/data", "/tools/json-toolkit", "/tools/pdf-workspace", "/tools/image-resize", "/tools/csv-workspace"]) {
+  for (const route of ["/", "/categories/pdf", "/categories/text", "/categories/developer", "/tools/api-client", "/tools/code-formatter", "/tools/pdf-workspace", "/tools/image-resize", "/tools/loan-calculator"]) {
     await page.goto(route);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   }
@@ -807,7 +855,7 @@ test("all enabled tool routes use English UI and reflow at 320px", async ({ page
   const configResponse = await page.request.get("/api/v1/config");
   expect(configResponse.ok()).toBe(true);
   const envelope = await configResponse.json() as { data: { enabledToolIds: string[] } };
-  expect(envelope.data.enabledToolIds).toHaveLength(70);
+  expect(envelope.data.enabledToolIds).toHaveLength(52);
 
   for (const toolId of envelope.data.enabledToolIds) {
     await page.goto(`/tools/${toolId}`);
@@ -843,7 +891,7 @@ test("all enabled tool routes use English UI and reflow at 320px", async ({ page
 
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ["/", "/categories/pdf", "/categories/text", "/tools/pdf-workspace", "/tools/csv-workspace", "/tools/split-bill"]) {
+    for (const route of ["/", "/categories/pdf", "/categories/text", "/categories/developer", "/tools/api-client", "/tools/pdf-workspace", "/tools/split-bill", "/tools/savings-calculator"]) {
       await page.goto(route);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       const dimensions = await page.evaluate(() => ({

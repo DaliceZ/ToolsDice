@@ -45,20 +45,20 @@ describe("Dashboard", () => {
 
     expect(document.documentElement.lang).toBe("th");
     expect(document.documentElement.dataset.language).toBe("th");
-    expect(screen.getByRole("heading", { name: /สำรวจ 9 หมวดหมู่/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /สำรวจ 8 หมวดหมู่/ })).toBeInTheDocument();
   });
 
-  it("shows only nine categories, keeps favorites visible, and has no recent row", () => {
-    localStorage.setItem("tfd:favorites", JSON.stringify(["json-toolkit"]));
+  it("shows only eight categories, keeps favorites visible, and has no recent row", () => {
+    localStorage.setItem("tfd:favorites", JSON.stringify(["api-client"]));
     renderDashboard();
 
     expect(screen.getByRole("heading", { name: "ToolsDice" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Explore 9 categories/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Explore 8 categories/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Favorites" })).toBeInTheDocument();
-    expect(screen.getByText("JSON Toolkit")).toBeInTheDocument();
+    expect(screen.getByText("API Request Builder")).toBeInTheDocument();
     expect(screen.queryByText("ใช้ล่าสุด")).not.toBeInTheDocument();
-    expect(document.querySelectorAll('a[href^="/categories/"]')).toHaveLength(9);
-    expect(screen.queryByRole("link", { name: "เปิด JSON Toolkit" })).not.toBeInTheDocument();
+    expect(document.querySelectorAll('a[href^="/categories/"]')).toHaveLength(8);
+    expect(screen.queryByRole("link", { name: "Open API Request Builder" })).not.toBeInTheDocument();
 
     const keys = Array.from(
       { length: localStorage.length },
@@ -72,13 +72,13 @@ describe("Dashboard", () => {
     renderDashboard();
     fireEvent.click(screen.getByRole("button", { name: "Search tools" }));
     const search = screen.getByRole("combobox", { name: "Search tools" });
-    fireEvent.change(search, { target: { value: "JSON" } });
-    const option = await screen.findByRole("option", { name: /JSON Toolkit/ });
+    fireEvent.change(search, { target: { value: "API" } });
+    const option = await screen.findByRole("option", { name: /API Request Builder/ });
     expect(option).toBeInTheDocument();
     fireEvent.keyDown(search, { key: "Enter" });
 
     await waitFor(() =>
-      expect(screen.getByLabelText("Current route")).toHaveTextContent("/tools/json-toolkit"),
+      expect(screen.getByLabelText("Current route")).toHaveTextContent("/tools/api-client"),
     );
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
   });

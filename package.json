@@ -1,6 +1,7 @@
 {
   "name": "tools-for-dice",
   "private": true,
+  "packageManager": "bun@1.4.2",
   "workspaces": [
     "frontend",
     "backend"
